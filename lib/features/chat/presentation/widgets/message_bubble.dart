@@ -1,7 +1,8 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:gpt_markdown/gpt_markdown.dart';
+
+import 'chat_markdown_text.dart';
 
 /// A single chat message bubble with optional copy / read-aloud actions.
 class MessageBubble extends StatelessWidget {
@@ -88,16 +89,13 @@ class MessageBubble extends StatelessWidget {
             ],
             if (child != null || (content?.isNotEmpty ?? false))
               child ??
-                  GptMarkdown(
+                  ChatMarkdownText(
                     content!,
                     style: TextStyle(
                       color: isUser
                           ? colorScheme.onPrimaryContainer
                           : colorScheme.onSecondaryContainer,
                     ),
-                    animation: isStreaming
-                        ? GptMarkdownAnimation.fade
-                        : GptMarkdownAnimation.none,
                     isStreaming: isStreaming,
                   ),
             if (showActions) ...[

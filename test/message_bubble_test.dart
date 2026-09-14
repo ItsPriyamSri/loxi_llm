@@ -49,7 +49,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(Image), findsOneWidget);
-    expect(find.text('what is in this photo?'), findsOneWidget);
+    expect(
+      find.text('what is in this photo?', findRichText: true),
+      findsOneWidget,
+    );
   });
 
   testWidgets('renders no image when imagePath is null', (tester) async {
@@ -67,7 +70,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(Image), findsNothing);
-    expect(find.text('just text'), findsOneWidget);
+    expect(find.text('just text', findRichText: true), findsOneWidget);
   });
 
   testWidgets('renders no Text widget for an image-only message (empty content)',
