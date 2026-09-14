@@ -32,7 +32,7 @@ class ChatMarkdownText extends StatelessWidget {
       animation:
           isStreaming ? GptMarkdownAnimation.fade : GptMarkdownAnimation.none,
       isStreaming: isStreaming,
-      components: inlineOnly ? const <MarkdownComponent>[] : null,
+      components: inlineOnly ? MarkdownComponent.inlineComponents : null,
     );
   }
 }

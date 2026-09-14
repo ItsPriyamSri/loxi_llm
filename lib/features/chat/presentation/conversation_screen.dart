@@ -18,6 +18,7 @@ import '../domain/message.dart';
 import '../domain/message_role.dart';
 import 'chat_notifier.dart';
 import 'conversation_list_notifier.dart';
+import 'widgets/chat_markdown_text.dart';
 import 'widgets/message_bubble.dart';
 
 /// Whether a pending image attachment should survive an inference-state
@@ -361,7 +362,12 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        title: Text(conversation?.title ?? 'Chat'),
+        title: ChatMarkdownText(
+          conversation?.title ?? 'Chat',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          inlineOnly: true,
+        ),
         actions: [
           if (exportConversation != null)
             PopupMenuButton<String>(
