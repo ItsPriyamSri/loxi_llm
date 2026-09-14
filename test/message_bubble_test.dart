@@ -49,7 +49,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(Image), findsOneWidget);
-    expect(find.text('what is in this photo?'), findsOneWidget);
+    expect(
+      find.text('what is in this photo?', findRichText: true),
+      findsOneWidget,
+    );
   });
 
   testWidgets('renders no image when imagePath is null', (tester) async {
@@ -67,7 +70,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(Image), findsNothing);
-    expect(find.text('just text'), findsOneWidget);
+    expect(find.text('just text', findRichText: true), findsOneWidget);
   });
 
   testWidgets('renders no Text widget for an image-only message (empty content)',
@@ -112,5 +115,43 @@ void main() {
     });
 
     expect(find.byIcon(Icons.broken_image_outlined), findsOneWidget);
+  });
+
+  testWidgets('assistant bubble renders markdown instead of raw markers',
+      (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: MessageBubble(
+            content: 'Hello **world**',
+            isUser: false,
+            isStreaming: false,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('**world**', findRichText: true), findsNothing);
+    expect(find.textContaining('world', findRichText: true), findsOneWidget);
+  });
+
+  testWidgets('user bubble renders markdown instead of raw markers',
+      (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: MessageBubble(
+            content: 'keep **stars**',
+            isUser: true,
+            isStreaming: false,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('**stars**', findRichText: true), findsNothing);
+    expect(find.textContaining('stars', findRichText: true), findsOneWidget);
   });
 }
