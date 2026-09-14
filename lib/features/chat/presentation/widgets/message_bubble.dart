@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import 'chat_markdown_text.dart';
+
 /// A single chat message bubble with optional copy / read-aloud actions.
 class MessageBubble extends StatelessWidget {
   const MessageBubble({
@@ -87,15 +89,14 @@ class MessageBubble extends StatelessWidget {
             ],
             if (child != null || (content?.isNotEmpty ?? false))
               child ??
-                  Text(
+                  ChatMarkdownText(
                     content!,
                     style: TextStyle(
                       color: isUser
                           ? colorScheme.onPrimaryContainer
                           : colorScheme.onSecondaryContainer,
-                      fontStyle:
-                          isStreaming ? FontStyle.italic : FontStyle.normal,
                     ),
+                    isStreaming: isStreaming,
                   ),
             if (showActions) ...[
               const SizedBox(height: 4),
