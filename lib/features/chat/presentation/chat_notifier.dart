@@ -597,7 +597,7 @@ class ChatNotifier extends _$ChatNotifier {
         chunkSize: settings.chunkSize,
         summary: summary,
         historyWindow: _maxHistoryMessages,
-        modelName: modelName,
+        modelName: loadedModel?.name ?? 'unknown',
         backendName: backend.runtimeType.toString(),
         contextSize: ctx is int ? ctx : null,
         agentCapable: isAgentCapableModel(loadedModel?.id),
