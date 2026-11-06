@@ -475,6 +475,13 @@ class ChatNotifier extends _$ChatNotifier {
   /// this, but windowing here preserves the system prompt + RAG context).
   static const int _maxHistoryMessages = 20;
 
+  /// Applies [update] to the current [ChatState], or does nothing when state
+  /// holds no value (loading or error), e.g. after a previous turn errored.
+  void _updateState(ChatState Function(ChatState) update) {
+    final current = state.valueOrNull;
+    if (current != null) state = AsyncData(update(current));
+  }
+
   /// Stop the in-flight generation. The partial reply already streamed is kept
   /// (the stream's onDone saves it). No-op when nothing is streaming.
   Future<void> stop() async {
@@ -483,12 +490,6 @@ class ChatNotifier extends _$ChatNotifier {
     AppLogger.instance.info(_logTag, 'stop() requested');
     final backend = ref.read(inferenceNotifierProvider).valueOrNull;
     await backend?.stop();
-  }
-
-  void _updateState(ChatState Function(ChatState) update) {
-    if (state.valueOrNull != null) {
-      state = AsyncData(update(state.requireValue));
-    }
   }
 
   /// Fold any messages that have fallen outside the prompt window into the
