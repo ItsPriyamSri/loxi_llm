@@ -11,6 +11,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Agent tool: `model_info` — reports the loaded model, backend, context size, agent capability, and per-chat RAG flag ([#16](https://github.com/LucknowAI/loxi_llm/issues/16))
 - LFM3 1.7B added to the model catalog for text chat, with thinking off and agent tools disabled. Bumped the vendored `llama.cpp` submodule to upstream build b11960 (`8642541b2`), which adds the `lfm3` architecture ([#95](https://github.com/LucknowAI/loki_llm/issues/95))
 
+### Fixed
+
+- Streaming replies no longer blur at the bottom of the bubble; new text fades in from left to right ([#97](https://github.com/LucknowAI/loki_llm/issues/97))
+
 ## [1.2.0] — 2026-09-16
 
 ### Added
