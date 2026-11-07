@@ -18,6 +18,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The "model loaded" snackbar no longer stays on screen until dismissed ([#101](https://github.com/LucknowAI/loki_llm/issues/101))
 - The chat list names the model that answered and when the chat was updated, instead of "No model" on a plain row ([#103](https://github.com/LucknowAI/loki_llm/issues/103))
 - A chat no longer stays locked with a Stop button after a generation timeout or error; the conversation stays usable and a message explains what happened ([#106](https://github.com/LucknowAI/loki_llm/issues/106))
+- Chat reaches the first token faster on Android. The engine uses the ARM CPU instructions the phone supports, and a follow-up turn reuses the part of the conversation it already read ([#108](https://github.com/LucknowAI/loki_llm/issues/108))
 
 ## [1.2.0] — 2026-09-16
 
