@@ -17,6 +17,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Streaming replies no longer blur at the bottom of the bubble; new text fades in from left to right ([#97](https://github.com/LucknowAI/loki_llm/issues/97))
 - The "model loaded" snackbar no longer stays on screen until dismissed ([#101](https://github.com/LucknowAI/loki_llm/issues/101))
 - The chat list names the model that answered and when the chat was updated, instead of "No model" on a plain row ([#103](https://github.com/LucknowAI/loki_llm/issues/103))
+- A chat no longer stays locked with a Stop button after a generation timeout or error; the conversation stays usable and a message explains what happened ([#106](https://github.com/LucknowAI/loki_llm/issues/106))
 
 ## [1.2.0] — 2026-09-16
 
