@@ -70,7 +70,7 @@ const _glyphs = <PrismGlyph, IconData>{
   PrismGlyph.search: LucideIcons.search,
   PrismGlyph.lock: LucideIcons.lock,
   PrismGlyph.link: LucideIcons.link,
-  PrismGlyph.send: LucideIcons.arrowUp,
+  PrismGlyph.send: LucideIcons.arrowRight,
   PrismGlyph.spark: LucideIcons.sparkles,
   PrismGlyph.down: LucideIcons.arrowDown,
   PrismGlyph.brokenImage: LucideIcons.imageOff,
@@ -107,8 +107,8 @@ class PrismIcon extends StatelessWidget {
   }
 }
 
-/// The app's identity: a flat lilac tile carrying the same die motif the
-/// live hero draws in 3D — no gradients, no glow, one plum silhouette.
+/// The app's identity: a vivid violet squircle carrying the layers motif —
+/// the same mark the welcome screen wears.
 class PrismBrandMark extends StatelessWidget {
   const PrismBrandMark({super.key, this.size = 28});
 
@@ -120,13 +120,21 @@ class PrismBrandMark extends StatelessWidget {
       child: DecoratedBox(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(size * .30),
-          color: PrismRelay.lilacSoft,
+          gradient: PrismRelay.accentGradient,
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0x805B3BE3),
+              blurRadius: size * .5,
+              offset: Offset(0, size * .18),
+              spreadRadius: -size * .3,
+            ),
+          ],
         ),
         child: SizedBox.square(
           dimension: size,
           child: Icon(
-            LucideIcons.cpu,
-            color: PrismRelay.plum,
+            LucideIcons.layers,
+            color: Colors.white,
             size: size * .60,
           ),
         ),

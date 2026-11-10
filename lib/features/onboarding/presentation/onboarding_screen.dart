@@ -4,10 +4,11 @@ import 'package:go_router/go_router.dart';
 import '../../../core/platform/haptics.dart';
 import '../../../core/providers/shared_preferences_provider.dart';
 import '../../../core/theme/prism_relay.dart';
-import '../../../core/widgets/chip_art.dart';
 import '../../../core/widgets/prism_art.dart';
 import '../../../core/widgets/prism_icon.dart';
 
+/// The welcome page. One screen, one action — the app asks nothing before
+/// it has shown what it is.
 class OnboardingScreen extends ConsumerStatefulWidget {
   const OnboardingScreen({super.key});
 
@@ -15,31 +16,40 @@ class OnboardingScreen extends ConsumerStatefulWidget {
   ConsumerState<OnboardingScreen> createState() => _OnboardingScreenState();
 }
 
-class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
-  final _pageController = PageController();
-  int _page = 0;
+class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
+    with SingleTickerProviderStateMixin {
   bool _finishing = false;
 
-  static const _pages = [
-    _OnboardingPage(
-      artwork: PrismArtwork.relay,
-      pose: RelayPose.ready,
-      title: 'Welcome to Loki LLM',
-      body: 'Private conversations with AI that runs on your phone.',
-    ),
-    _OnboardingPage(
-      artwork: PrismArtwork.relay,
-      pose: RelayPose.transfer,
-      title: 'Download a Model',
-      body:
-          'Download or import a model once. After that, Loki answers with no internet at all.',
-    ),
-    _OnboardingPage(
-      artwork: PrismArtwork.document,
-      title: 'Chat & Use Documents',
-      body: 'Start a conversation or add documents to use in chat.',
-    ),
-  ];
+  late final AnimationController _entrance = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  );
+
+  static const _riseCurve = Curves.easeOutCubic;
+
+  Animation<double> _window(double begin, double end) => Tween<double>(
+        begin: 0,
+        end: 1,
+      ).animate(CurvedAnimation(
+        parent: _entrance,
+        curve: Interval(begin, end, curve: _riseCurve),
+      ));
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _entrance.value = 1;
+    } else if (!_entrance.isAnimating && _entrance.value == 0) {
+      _entrance.forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    _entrance.dispose();
+    super.dispose();
+  }
 
   Future<void> _finish() async {
     Haptics.commit();
@@ -59,147 +69,176 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     }
   }
 
-  @override
-  void dispose() {
-    _pageController.dispose();
-    super.dispose();
-  }
+  Widget _rise(Animation<double> window, Widget child) => AnimatedBuilder(
+        animation: window,
+        builder: (context, child) => Opacity(
+          opacity: window.value,
+          child: Transform.translate(
+            offset: Offset(0, 22 * (1 - window.value)),
+            child: child,
+          ),
+        ),
+        child: child,
+      );
 
   @override
   Widget build(BuildContext context) {
-    final isLast = _page == _pages.length - 1;
-    final duration = MediaQuery.disableAnimationsOf(context)
-        ? Duration.zero
-        : const Duration(milliseconds: 200);
-    void moveTo(int page) {
-      Haptics.selection();
-      if (duration == Duration.zero) {
-        _pageController.jumpToPage(page);
-      } else {
-        _pageController.animateToPage(page,
-            duration: duration, curve: PrismRelay.curve);
-      }
-    }
+    final type = Theme.of(context).textTheme;
+    final artWindow = _window(.02, .52);
+    final copyWindow = _window(.2, .78);
+    final buttonWindow = _window(.42, 1);
 
     return Scaffold(
-      body: SafeArea(
-        child: Column(
+      body: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: PrismRelay.welcomeFace,
+        ),
+        child: Stack(
           children: [
-            Expanded(
-              child: PageView(
-                controller: _pageController,
-                onPageChanged: (i) => setState(() => _page = i),
-                children: _pages,
+            const Positioned.fill(
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: PrismRelay.welcomeWash,
+                  ),
+                ),
               ),
             ),
-            Semantics(
-              label: 'Page ${_page + 1} of ${_pages.length}',
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+            const Positioned.fill(
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: PrismRelay.welcomeWash2,
+                  ),
+                ),
+              ),
+            ),
+            SafeArea(
+              child: Column(
                 children: [
-                  for (var i = 0; i < _pages.length; i++)
-                    AnimatedContainer(
-                      duration: duration,
-                      margin: const EdgeInsets.symmetric(horizontal: 3),
-                      width: i == _page ? 20 : 7,
-                      height: 7,
-                      decoration: BoxDecoration(
-                        color: i == _page
-                            ? PrismRelay.periwinkle
-                            : PrismRelay.lineStrong,
-                        borderRadius: BorderRadius.circular(8),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+                    child: Row(
+                      children: [
+                        const PrismBrandMark(size: 34),
+                        const SizedBox(width: 10),
+                        Text(
+                          'Loki LLM',
+                          style: type.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.3,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final artSize = (constraints.maxHeight * .68)
+                            .clamp(170.0, 290.0);
+                        return Center(
+                          child: _rise(
+                            artWindow,
+                            ExcludeSemantics(
+                              child: PrismArt(
+                                artwork: PrismArtwork.relay,
+                                size: artSize,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(28, 0, 28, 18),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _rise(
+                          copyWindow,
+                          Text(
+                            'Your AI, on\nyour device.',
+                            style: type.displaySmall?.copyWith(
+                              fontSize: 38,
+                              height: 1.04,
+                              letterSpacing: -1.4,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        _rise(
+                          copyWindow,
+                          Text(
+                            'Download a model once. Then start a conversation, even offline.',
+                            style: type.bodyLarge?.copyWith(
+                              color: const Color(0xFF54496B),
+                              fontSize: 15,
+                              height: 1.45,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                    child: _rise(
+                      buttonWindow,
+                      SizedBox(
+                        width: double.infinity,
+                        height: 56,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: PrismRelay.accentGradient,
+                            borderRadius: BorderRadius.circular(15),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Color(0x665B3BE3),
+                                blurRadius: 22,
+                                offset: Offset(0, 12),
+                                spreadRadius: -8,
+                              ),
+                            ],
+                          ),
+                          child: Material(
+                            type: MaterialType.transparency,
+                            borderRadius: BorderRadius.circular(15),
+                            child: InkWell(
+                              onTap: _finishing ? null : _finish,
+                              borderRadius: BorderRadius.circular(15),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 20),
+                                child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      _finishing ? 'Just a moment…' : 'Get started',
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w800,
+                                        letterSpacing: -0.2,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    const PrismIcon(PrismGlyph.send,
+                                        size: 20, color: Colors.white),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
                     ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  if (_page > 0)
-                    TextButton(
-                      onPressed: () => moveTo(_page - 1),
-                      child: const Text('Back'),
-                    )
-                  else
-                    const SizedBox.shrink(),
-                  FilledButton(
-                    onPressed: _finishing
-                        ? null
-                        : isLast
-                            ? _finish
-                            : () => moveTo(_page + 1),
-                    child: Text(isLast ? 'Get Started' : 'Next'),
                   ),
                 ],
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _OnboardingPage extends StatelessWidget {
-  const _OnboardingPage({
-    required this.artwork,
-    required this.title,
-    required this.body,
-    this.pose = RelayPose.idle,
-  });
-
-  final PrismArtwork artwork;
-  final RelayPose pose;
-  final String title;
-  final String body;
-
-  @override
-  Widget build(BuildContext context) {
-    final type = Theme.of(context).textTheme;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: RadialGradient(
-          center: const Alignment(.65, -.42),
-          radius: .85,
-          colors: [
-            artwork == PrismArtwork.document
-                ? PrismRelay.mintSurface
-                : PrismRelay.lilacSoft,
-            PrismRelay.canvas,
-          ],
-        ),
-      ),
-      child: LayoutBuilder(
-        builder: (context, constraints) => SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-                minHeight:
-                    (constraints.maxHeight - 48).clamp(0, double.infinity)),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const PrismBrandMark(size: 29),
-                    const SizedBox(width: 9),
-                    Text('Loki LLM', style: type.titleSmall),
-                  ],
-                ),
-                Center(
-                    child: artwork == PrismArtwork.relay
-                        ? ChipArt(pose: pose, size: 208)
-                        : PrismArt(artwork: artwork, pose: pose, size: 208)),
-                Text(title, style: type.displaySmall),
-                const SizedBox(height: 12),
-                Text(body, style: type.bodyLarge),
-              ],
-            ),
-          ),
         ),
       ),
     );

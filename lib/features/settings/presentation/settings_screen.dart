@@ -405,10 +405,10 @@ Future<void> _howLokiWorks(BuildContext context) {
     context: context,
     builder: (context) => AlertDialog(
       title: const Text('How Loki works'),
-      content: Column(
+      content: const Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: const [
+        children: [
           Text('The model lives on your phone.'),
           SizedBox(height: 10),
           Text('Answers are generated on-device — nothing leaves your phone, even with no network.'),

@@ -67,9 +67,18 @@ void main() {
     final container = await _openChat(_FakeTts(), blank: true);
     await tester.pumpWidget(_app(container));
     await tester.pumpAndSettle();
-    expect(find.text('Translate'), findsNothing);
+    // Before selection: the template grid owns the screen center and the
+    // shortcuts ride above the composer.
+    expect(find.byKey(const ValueKey('saved-prompts')), findsOneWidget);
+    expect(find.byKey(const ValueKey('centered-shortcuts')), findsNothing);
+    final quick = find.byKey(const ValueKey('quick-shortcuts'));
+    expect(find.descendant(of: quick, matching: find.text('Translate')),
+        findsOneWidget);
     await tester.tap(find.text('Concise'));
     await tester.pumpAndSettle();
+    // After selection: the grid yields and the shortcuts take the center.
+    expect(find.byKey(const ValueKey('saved-prompts')), findsNothing);
+    expect(find.byKey(const ValueKey('quick-shortcuts')), findsNothing);
     expect(find.text('Concise'), findsNothing);
     final shortcuts = find.byKey(const ValueKey('centered-shortcuts'));
     expect(find.descendant(of: shortcuts, matching: find.text('Translate')),
@@ -89,11 +98,20 @@ void main() {
 
     await tester.pumpWidget(_app(container));
     await tester.pumpAndSettle();
-    final docs = find.byTooltip('Turn on Documents');
-    expect(docs.hitTestable(), findsOneWidget);
-    await tester.tap(docs);
+    // Open the add-to-message sheet and toggle Documents from it.
+    await tester.tap(find.byKey(const ValueKey('add-to-message')));
     await tester.pumpAndSettle();
-    expect(find.byTooltip('Turn off Documents').hitTestable(), findsOneWidget);
+    final docsRow = find.text('Documents');
+    expect(docsRow.hitTestable(), findsOneWidget);
+    final before = tester.widget<Switch>(find.byType(Switch).first).value;
+    await tester.tap(docsRow);
+    await tester.pumpAndSettle();
+    final after = tester.widget<Switch>(find.byType(Switch).first).value;
+    expect(after, isNot(before));
+    // Tools stay visible but greyed when the model cannot call them.
+    expect(find.text('Tools'), findsOneWidget);
+    await tester.tapAt(const Offset(1, 1)); // dismiss sheet via barrier
+    await tester.pumpAndSettle();
     expect(
         find.byKey(const ValueKey('send-stop')).hitTestable(), findsOneWidget);
     expect(tester.takeException(), isNull);

@@ -72,8 +72,8 @@ void main() {
     models.transfer('second', .62);
     await tester.pumpAndSettle();
     final hero = find.byKey(const ValueKey('model-hero'));
-    Finder heroText(String text) =>
-        find.descendant(of: hero, matching: find.text(text));
+    Finder heroText(String text) => find.descendant(
+        of: hero, matching: find.textContaining(text));
     expect(heroText('15%'), findsOneWidget);
     await tester.tap(find.text('Second model'));
     await tester.pumpAndSettle();

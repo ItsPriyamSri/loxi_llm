@@ -195,78 +195,91 @@ class _ModelsScreenState extends ConsumerState<ModelsScreen> {
     }
 
     final item = selected == null ? null : presentation(selected);
+    final heroLoaded = item?.status == ModelStatus.loaded;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Models'),
         actions: [
           IconButton(
-            icon: const PrismIcon(PrismGlyph.settings),
             tooltip: 'Settings',
             onPressed: loading ? null : () => context.push('/settings'),
+            icon: const PrismIcon(PrismGlyph.settings,
+                size: 22, color: PrismRelay.plum),
+            style: IconButton.styleFrom(
+              backgroundColor: PrismRelay.lilacSoft,
+              minimumSize: const Size.square(44),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
           ),
           const SizedBox(width: 8),
         ],
       ),
       body: Stack(children: [
         ListView(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
           children: [
             if (item != null)
               PrismHero(
                 key: const ValueKey('model-hero'),
-                title: item.model.name,
-                tint: item.tint,
-                announceStatus: !item.live,
+                variant: heroLoaded
+                    ? PrismHeroVariant.mint
+                    : PrismHeroVariant.violet,
                 pose: item.pose,
                 status: _focusedId == null &&
                         item.model.id == 'gemma3-270m-it' &&
                         item.status == ModelStatus.available
                     ? 'Suggested starter'
                     : item.label,
-                detail: Text(item.metadata,
-                    style: Theme.of(context).textTheme.bodySmall),
+                statusGlyph: item.statusGlyph,
+                announceStatus: !item.live,
+                title: item.model.name,
+                detail: Text(item.metadata),
                 progress: item.live || item.status == ModelStatus.loading
-                    ? _TransferProgress(
+                    ? _HeroProgress(
                         key: ValueKey(item.model.id), value: item.fraction)
                     : null,
-                action: FilledButton.icon(
-                  onPressed: item.status == ModelStatus.loaded &&
-                          !loading &&
-                          !_unloading
-                      ? () => _startChat(item.model)
-                      : actionFor(item),
-                  icon: PrismIcon(
-                    item.status == ModelStatus.loaded
+                actionLabel: item.status == ModelStatus.loading
+                    ? 'Loading model'
+                    : item.status == ModelStatus.loaded
+                        ? 'Start a chat'
+                        : item.actionLabel,
+                actionGlyph: item.status == ModelStatus.loading
+                    ? PrismGlyph.relay
+                    : item.status == ModelStatus.loaded
                         ? PrismGlyph.chat
                         : item.actionIcon,
-                    size: 17,
-                  ),
-                  label: Text(item.status == ModelStatus.loaded
-                      ? 'Start a chat'
-                      : item.actionLabel),
+                actionEnabled: item.status == ModelStatus.loading
+                    ? false
+                    : item.status == ModelStatus.loaded
+                        ? !loading && !_unloading
+                        : actionFor(item) != null,
+                onAction: item.status == ModelStatus.loaded
+                    ? () => _startChat(item.model)
+                    : actionFor(item),
+              ),
+            const SizedBox(height: 22),
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Text('Model library',
+                    style: Theme.of(context).textTheme.titleMedium),
+                TextButton.icon(
+                  onPressed: loading || _choosingFile ? null : _sideload,
+                  icon: const PrismIcon(PrismGlyph.plus, size: 19),
+                  label: Text(_choosingFile ? 'Opening…' : 'Import model'),
                 ),
-              ),
-            Padding(
-              padding: const EdgeInsets.only(top: 18, bottom: 6),
-              child: Wrap(
-                alignment: WrapAlignment.spaceBetween,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  Text('Model library',
-                      style: Theme.of(context).textTheme.titleMedium),
-                  TextButton.icon(
-                    onPressed: loading || _choosingFile ? null : _sideload,
-                    icon: const PrismIcon(PrismGlyph.file),
-                    label: Text(_choosingFile ? 'Opening…' : 'Import a file'),
-                  ),
-                ],
-              ),
+              ],
             ),
+            const SizedBox(height: 4),
             if (catalog.isLoading && models.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(24),
-                child: Center(child: CircularProgressIndicator()),
-              )
+              ...const [
+                _SkeletonRow(),
+                _SkeletonRow(),
+                _SkeletonRow(),
+              ]
             else if (catalog.hasError)
               Container(
                 decoration: BoxDecoration(
@@ -311,37 +324,48 @@ class _ModelsScreenState extends ConsumerState<ModelsScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    Text('No models available',
+                    Text('No models yet',
                         style: Theme.of(context).textTheme.titleMedium),
                     const SizedBox(height: 4),
                     Text(
-                      'Download a model above, or import a file.',
+                      'Download the starter model above, or import your own.',
                       textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodySmall,
+                      style: Theme.of(context).textTheme.bodyMedium,
                     ),
                     const SizedBox(height: 18),
                     FilledButton.icon(
                       onPressed: loading || _choosingFile ? null : _sideload,
                       icon: const PrismIcon(PrismGlyph.plus, size: 18),
-                      label: Text(_choosingFile ? 'Opening…' : 'Import a file'),
+                      label: Text(_choosingFile ? 'Opening…' : 'Import model'),
                     ),
                   ],
                 ),
+              )
+            else
+              Column(
+                children: [
+                  const Divider(height: 1),
+                  for (var index = 0; index < models.length; index++) ...[
+                    _ModelRow(
+                      index: index,
+                      item: presentation(models[index]),
+                      selected: models[index].id == selected?.id,
+                      onSelect: loading
+                          ? null
+                          : () {
+                              Haptics.selection();
+                              setState(() => _focusedId = models[index].id);
+                            },
+                      onAction: actionFor(presentation(models[index])),
+                    ),
+                    if (index != models.length - 1)
+                      const Padding(
+                        padding: EdgeInsetsDirectional.only(start: 58),
+                        child: Divider(height: 1),
+                      ),
+                  ],
+                ],
               ),
-            for (final model in models) ...[
-              _ModelRow(
-                item: presentation(model),
-                selected: model.id == selected?.id,
-                onSelect: loading
-                    ? null
-                    : () {
-                        Haptics.selection();
-                        setState(() => _focusedId = model.id);
-                      },
-                onAction: actionFor(presentation(model)),
-              ),
-              const SizedBox(height: PrismRelay.rowGap),
-            ],
           ],
         ),
         if (loadingModel != null)
@@ -368,23 +392,33 @@ class _LoadingOverlay extends StatelessWidget {
               padding: const EdgeInsets.all(24),
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 const ExcludeSemantics(
-                  child: ChipArt(size: 180, pose: RelayPose.loading),
+                  child: ChipArt(size: 176, pose: RelayPose.loading),
                 ),
+                const SizedBox(height: 10),
                 Text('Loading $modelName…',
                     textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.titleLarge),
+                    style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 8),
-                Text('Large models take a minute — it happens once per model.',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodyMedium),
-                const SizedBox(height: 20),
+                Text(
+                  'Large models take a minute the first time.',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Vision models may take a little longer.',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: PrismRelay.inkMuted),
+                ),
+                const SizedBox(height: 18),
                 const SizedBox(
                   width: 160,
                   child: LinearProgressIndicator(
                     minHeight: 5,
                     borderRadius: BorderRadius.all(Radius.circular(6)),
-                    color: PrismRelay.amberInk,
-                    backgroundColor: PrismRelay.peachSurface,
+                    color: PrismRelay.accent,
+                    backgroundColor: PrismRelay.lilacSoft,
                   ),
                 ),
               ]),
@@ -431,7 +465,7 @@ class _ModelPresentation {
         ModelStatus.downloading when !live => 'Download interrupted',
         ModelStatus.downloading => [
             if (fraction != null)
-              '${(fraction! * 100).toStringAsFixed(0)}%'
+              'Downloading · ${(fraction! * 100).toStringAsFixed(0)}%'
             else
               'Downloading…',
             if (speed != null && speed! > 0)
@@ -468,17 +502,17 @@ class _ModelPresentation {
           PrismGlyph.refresh,
         ModelStatus.downloaded => PrismGlyph.play,
         ModelStatus.loading => PrismGlyph.relay,
-        ModelStatus.loaded => PrismGlyph.unload,
+        ModelStatus.loaded => PrismGlyph.chat,
       };
 
-  Color get tint => switch (status) {
-        ModelStatus.loaded => PrismRelay.mintSurface,
-        ModelStatus.error => PrismRelay.blush,
-        ModelStatus.downloading ||
-        ModelStatus.loading ||
-        ModelStatus.paused =>
-          PrismRelay.peachSurface,
-        _ => PrismRelay.lilacSoft,
+  PrismGlyph get statusGlyph => switch (status) {
+        ModelStatus.available => PrismGlyph.spark,
+        ModelStatus.downloading => PrismGlyph.download,
+        ModelStatus.paused => PrismGlyph.download,
+        ModelStatus.downloaded => PrismGlyph.check,
+        ModelStatus.loading => PrismGlyph.relay,
+        ModelStatus.loaded => PrismGlyph.check,
+        ModelStatus.error => PrismGlyph.warn,
       };
 
   RelayPose get pose => switch (status) {
@@ -491,134 +525,246 @@ class _ModelPresentation {
 
 class _ModelRow extends StatelessWidget {
   const _ModelRow({
+    required this.index,
     required this.item,
     required this.selected,
     required this.onSelect,
     required this.onAction,
   });
 
+  final int index;
   final _ModelPresentation item;
   final bool selected;
   final VoidCallback? onSelect;
   final VoidCallback? onAction;
 
+  static const _identityTiles = [
+    (Color(0xFFFDEBDD), PrismRelay.amberInk),
+    (PrismRelay.skySoft, PrismRelay.skyInk),
+    (PrismRelay.mintSurface, PrismRelay.greenInk),
+    (PrismRelay.lilacSoft, PrismRelay.plum),
+    (PrismRelay.coralSoft, PrismRelay.errorInk),
+  ];
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final model = item.model;
-    // Motion hue is reserved for state, never for identity: one violet tile
-    // family at rest, mint when resident, peach while bytes move, blush on
-    // failure. Identity glyphs only distinguish capability (image / file).
-    final (glyph, tint, ink) = switch (item.status) {
-      ModelStatus.loaded => (
-          PrismGlyph.check,
-          PrismRelay.mintSurface,
-          PrismRelay.greenInk
-        ),
+    // Hue marks state first, identity second: mint = resident, peach = bytes
+    // moving, blush = failed; at rest each model keeps its own pastel.
+    final (tileBg, tileInk) = switch (item.status) {
+      ModelStatus.loaded => (PrismRelay.mintSurface, PrismRelay.greenInk),
       ModelStatus.downloading ||
       ModelStatus.loading ||
       ModelStatus.paused =>
-        (PrismGlyph.download, PrismRelay.peachSurface, PrismRelay.amberInk),
-      ModelStatus.error => (
-          PrismGlyph.warn,
-          PrismRelay.blush,
-          PrismRelay.errorInk
-        ),
-      _ when isMultimodalModel(model) => (
-          PrismGlyph.image,
-          PrismRelay.lilacSoft,
-          PrismRelay.plum
-        ),
-      _ when model.id.startsWith('sideload-') => (
-          PrismGlyph.file,
-          PrismRelay.lilacSoft,
-          PrismRelay.plum
-        ),
-      _ => (PrismGlyph.relay, PrismRelay.lilacSoft, PrismRelay.plum),
+        (PrismRelay.peachSurface, PrismRelay.amberInk),
+      ModelStatus.error => (PrismRelay.blush, PrismRelay.errorInk),
+      _ when isMultimodalModel(model) =>
+        (PrismRelay.lilacSoft, PrismRelay.plum),
+      _ => _identityTiles[index % _identityTiles.length],
     };
-    final color = item.status == ModelStatus.loaded ? PrismRelay.greenInk : ink;
-    return Card(
-      color: selected ? PrismRelay.lilacSoft : PrismRelay.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
-        side: BorderSide(
-          color: selected
-              ? PrismRelay.periwinkle.withValues(alpha: .8)
-              : PrismRelay.line,
-          width: selected ? 1.5 : 1,
-        ),
-      ),
-      child: Column(
-        children: [
-          ListTile(
-            selected: selected,
-            onTap: onSelect,
-            leading: DecoratedBox(
-              decoration: BoxDecoration(
-                color: item.status == ModelStatus.loaded
-                    ? PrismRelay.mintSurface
-                    : tint,
-                borderRadius: BorderRadius.circular(11),
-              ),
-              child: SizedBox.square(
-                dimension: 38,
-                child: PrismIcon(
-                  item.status == ModelStatus.loaded ? PrismGlyph.check : glyph,
-                  color: color,
-                  size: 18,
-                ),
-              ),
-            ),
-            title: Text(item.model.name, style: theme.textTheme.titleSmall),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(item.metadata, style: theme.textTheme.bodySmall),
-                if (item.status != ModelStatus.available ||
-                    item.model.recommendationBadge != null)
-                  Text(item.label,
-                      style:
-                          theme.textTheme.labelMedium?.copyWith(color: color)),
-              ],
-            ),
-            trailing: IconButton(
-              tooltip: item.actionLabel,
-              onPressed: onAction,
-              icon: PrismIcon(item.actionIcon),
+    final stateColor = switch (item.status) {
+      ModelStatus.loaded ||
+      ModelStatus.downloaded =>
+        PrismRelay.greenInk,
+      ModelStatus.error => PrismRelay.errorInk,
+      ModelStatus.available =>
+        item.model.recommendationBadge != null ? PrismRelay.plum : PrismRelay.amberInk,
+      _ => PrismRelay.amberInk,
+    };
+    final showState = item.status != ModelStatus.available ||
+        item.model.recommendationBadge != null;
+    return Semantics(
+      selected: selected,
+      button: true,
+      label: model.name,
+      child: InkWell(
+        onTap: onSelect,
+        borderRadius: BorderRadius.circular(16),
+        child: AnimatedContainer(
+          duration: MediaQuery.disableAnimationsOf(context)
+              ? Duration.zero
+              : PrismRelay.motion,
+          curve: PrismRelay.curve,
+          decoration: BoxDecoration(
+            color: selected ? PrismRelay.lilacSoft : Colors.transparent,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: selected ? PrismRelay.periwinkle : Colors.transparent,
+              width: 1.5,
             ),
           ),
-          if (item.live)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-              child: _TransferProgress(value: item.fraction),
+          padding: const EdgeInsets.fromLTRB(10, 11, 6, 11),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: tileBg,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: SizedBox.square(
+                      dimension: 42,
+                      child: PrismIcon(
+                        item.status == ModelStatus.loaded
+                            ? PrismGlyph.check
+                            : isMultimodalModel(model)
+                                ? PrismGlyph.image
+                                : model.id.startsWith('sideload-')
+                                    ? PrismGlyph.file
+                                    : PrismGlyph.relay,
+                        color: tileInk,
+                        size: 20,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          model.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleSmall,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          item.metadata,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall,
+                        ),
+                        if (showState)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: Text(
+                              item.label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.labelMedium?.copyWith(
+                                color: stateColor,
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  IconButton(
+                    tooltip: item.status == ModelStatus.loaded
+                        ? 'Unload model'
+                        : item.actionLabel,
+                    onPressed: onAction,
+                    icon: PrismIcon(
+                      item.status == ModelStatus.loaded
+                          ? PrismGlyph.unload
+                          : item.actionIcon,
+                      size: 20,
+                    ),
+                    style: IconButton.styleFrom(
+                      backgroundColor: item.status == ModelStatus.loaded
+                          ? PrismRelay.mintSurface
+                          : PrismRelay.lilacSoft,
+                      foregroundColor: item.status == ModelStatus.loaded
+                          ? PrismRelay.greenInk
+                          : PrismRelay.plum,
+                      minimumSize: const Size.square(44),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(13),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              if (item.live)
+                Padding(
+                  padding: const EdgeInsetsDirectional.only(start: 54, top: 8),
+                  child: _TransferProgress(value: item.fraction),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SkeletonRow extends StatelessWidget {
+  const _SkeletonRow();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 11),
+      child: Row(
+        children: [
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: PrismRelay.line,
+              borderRadius: BorderRadius.circular(12),
             ),
+            child: const SizedBox.square(dimension: 42),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _SkeletonBar(widthFactor: .55, height: 13),
+                SizedBox(height: 7),
+                _SkeletonBar(widthFactor: .38, height: 10),
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
+class _SkeletonBar extends StatelessWidget {
+  const _SkeletonBar({required this.widthFactor, required this.height});
+
+  final double widthFactor;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) => FractionallySizedBox(
+        alignment: AlignmentDirectional.centerStart,
+        widthFactor: widthFactor,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: PrismRelay.line,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: SizedBox(height: height),
+        ),
+      );
+}
+
 class _TransferProgress extends StatelessWidget {
-  const _TransferProgress({super.key, this.value});
+  const _TransferProgress({super.key, required this.value, this.onDark = false});
+
   final double? value;
+  final bool onDark;
 
   @override
   Widget build(BuildContext context) {
     final reduce = MediaQuery.disableAnimationsOf(context);
-    if (reduce && value == null) {
-      return const SizedBox(
-          height: 5,
-          width: double.infinity,
-          child: ColoredBox(color: PrismRelay.peach));
-    }
     Widget indicator(double? fraction) => LinearProgressIndicator(
           value: fraction,
           semanticsLabel:
               fraction == null ? 'In progress' : 'Download progress',
           minHeight: 5,
           borderRadius: BorderRadius.circular(6),
-          color: PrismRelay.amberInk,
-          backgroundColor: PrismRelay.peach,
+          color: onDark ? PrismRelay.peach : PrismRelay.amberInk,
+          backgroundColor:
+              onDark ? const Color(0x3DFFFFFF) : PrismRelay.peachSurface,
         );
     if (value == null || reduce) return indicator(value);
     return TweenAnimationBuilder<double>(
@@ -627,4 +773,10 @@ class _TransferProgress extends StatelessWidget {
       builder: (_, progress, __) => indicator(progress),
     );
   }
+}
+
+/// The transfer bar rendered inside the violet hero — white track, peach
+/// fill, always visible while bytes move.
+class _HeroProgress extends _TransferProgress {
+  const _HeroProgress({super.key, super.value}) : super(onDark: true);
 }

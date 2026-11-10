@@ -75,25 +75,42 @@ class ChatScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Chat')),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
         children: [
           PrismHero(
+            variant: PrismHeroVariant.violet,
+            artwork: PrismArtwork.relay,
+            pose: pending ? RelayPose.loading : RelayPose.idle,
+            status: pending ? 'Loading' : failed ? 'Could not load' : 'No model',
+            statusGlyph: pending
+                ? PrismGlyph.relay
+                : failed
+                    ? PrismGlyph.warn
+                    : PrismGlyph.lock,
             title: pending
-                ? 'Loading model…'
+                ? 'Warming up…'
                 : failed
                     ? 'Could not load model'
                     : 'Load a model to chat',
-            tint: failed ? PrismRelay.blush : PrismRelay.lilacSoft,
-            artwork: PrismArtwork.chat,
+            detail: pending
+                ? const Text('This happens once per model.')
+                : failed
+                    ? const Text('Open Models and try loading it again.')
+                    : const Text('Your first reply works offline.'),
             progress: pending && !MediaQuery.disableAnimationsOf(context)
-                ? const LinearProgressIndicator()
+                ? const SizedBox(
+                    width: 150,
+                    child: LinearProgressIndicator(
+                      minHeight: 5,
+                      borderRadius: BorderRadius.all(Radius.circular(6)),
+                      color: PrismRelay.peach,
+                      backgroundColor: Color(0x3DFFFFFF),
+                    ),
+                  )
                 : null,
-            action: pending
-                ? null
-                : FilledButton(
-                    onPressed: () => context.go('/models'),
-                    child: const Text('Open Models'),
-                  ),
+            actionLabel: pending ? null : 'Open Models',
+            actionGlyph: PrismGlyph.models,
+            onAction: pending ? null : () => context.go('/models'),
           ),
         ],
       ),
@@ -123,21 +140,9 @@ class _ConversationListView extends ConsumerWidget {
       context.go('/chat/$id');
     }
 
+    final isEmpty = conversationsAsync.valueOrNull?.isEmpty ?? false;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Chat'),
-        actions: [
-          if (conversationsAsync.valueOrNull?.isNotEmpty == true)
-            Padding(
-              padding: const EdgeInsetsDirectional.only(end: 12),
-              child: FilledButton.icon(
-                icon: const PrismIcon(PrismGlyph.plus),
-                label: const Text('New Chat'),
-                onPressed: startNewConversation,
-              ),
-            ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('Chat')),
       body: conversationsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(
@@ -153,7 +158,7 @@ class _ConversationListView extends ConsumerWidget {
           final sorted = [...conversations]
             ..sort((a, b) => b.updatedAtMs.compareTo(a.updatedAtMs));
           return ListView.builder(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 96),
             itemCount: sorted.length,
             itemBuilder: (context, index) {
               final conv = sorted[index];
@@ -168,6 +173,7 @@ class _ConversationListView extends ConsumerWidget {
                 children: [
                   if (showsHeader) _SectionHeader(section),
                   _ConversationRow(
+                    index: index,
                     title: conv.title,
                     subtitle: conversationMeta(
                       modelName: modelName,
@@ -208,6 +214,59 @@ class _ConversationListView extends ConsumerWidget {
             },
           );
         },
+      ),
+      floatingActionButton: isEmpty
+          ? null
+          : _NewChatFab(onPressed: startNewConversation),
+    );
+  }
+}
+
+/// Extended "New chat" action button — gradient pill, brand shadow,
+/// always reachable above the dock.
+class _NewChatFab extends StatelessWidget {
+  const _NewChatFab({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      type: MaterialType.transparency,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        key: const ValueKey('new-chat-fab'),
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(18),
+        child: Ink(
+          decoration: BoxDecoration(
+            gradient: PrismRelay.accentGradient,
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: PrismRelay.shadowRaised,
+          ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 56, minWidth: 56),
+            child: const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  PrismIcon(PrismGlyph.plus, size: 20, color: Colors.white),
+                  SizedBox(width: 10),
+                  Text(
+                    'New chat',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.1,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -259,7 +318,7 @@ class _EmptyChats extends StatelessWidget {
               Center(
                 child: FilledButton.icon(
                   icon: const PrismIcon(PrismGlyph.plus, size: 18),
-                  label: const Text('New Chat'),
+                  label: const Text('New chat'),
                   onPressed: onStart,
                 ),
               ),
@@ -298,6 +357,7 @@ class _SectionHeader extends StatelessWidget {
 
 class _ConversationRow extends StatelessWidget {
   const _ConversationRow({
+    required this.index,
     required this.title,
     required this.subtitle,
     required this.onTap,
@@ -305,35 +365,42 @@ class _ConversationRow extends StatelessWidget {
     this.showDivider = true,
   });
 
+  final int index;
   final String title;
   final String subtitle;
   final VoidCallback onTap;
   final VoidCallback onDelete;
   final bool showDivider;
 
+  static const _tiles = [
+    (PrismRelay.lilacSoft, PrismRelay.plum),
+    (PrismRelay.skySoft, PrismRelay.skyInk),
+    (PrismRelay.mintSurface, PrismRelay.greenInk),
+  ];
+
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final (tileBg, tileInk) = _tiles[index % _tiles.length];
     return Column(
       children: [
         InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(16),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(6, 10, 2, 10),
+            padding: const EdgeInsets.fromLTRB(6, 11, 2, 11),
             child: Row(
               children: [
                 DecoratedBox(
                   decoration: BoxDecoration(
-                    color: PrismRelay.lilacSoft,
+                    color: tileBg,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: SizedBox.square(
-                    dimension: 38,
+                    dimension: 40,
                     child: PrismIcon(
                       PrismGlyph.chat,
-                      size: 18,
-                      color: PrismRelay.plum,
+                      size: 19,
+                      color: tileInk,
                     ),
                   ),
                 ),
@@ -361,7 +428,7 @@ class _ConversationRow extends StatelessWidget {
                             .textTheme
                             .bodySmall
                             ?.copyWith(
-                              color: colorScheme.onSurfaceVariant,
+                              color: PrismRelay.inkMuted,
                               fontSize: 12.5,
                             ),
                       ),

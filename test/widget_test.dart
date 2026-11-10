@@ -33,7 +33,7 @@ void main() {
       await tester.pump();
 
       final app = tester.widget<MaterialApp>(find.byType(MaterialApp));
-      expect(app.theme?.scaffoldBackgroundColor, const Color(0xFFFCF7F6));
+      expect(app.theme?.scaffoldBackgroundColor, const Color(0xFFF4F3FA));
       expect(find.byKey(const ValueKey('prism-dock')), findsOneWidget);
       expect(
           find.byKey(const ValueKey('prism-dock-selection')), findsOneWidget);

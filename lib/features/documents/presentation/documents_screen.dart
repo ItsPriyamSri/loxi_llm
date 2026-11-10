@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/platform/haptics.dart';
 import '../../../core/theme/prism_relay.dart';
+import '../../../core/widgets/prism_art.dart';
+import '../../../core/widgets/prism_hero.dart';
 import '../../../core/widgets/prism_icon.dart';
 import '../domain/document.dart';
 import 'documents_notifier.dart';
@@ -87,47 +89,33 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Documents')),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(4, 8, 4, 2),
-            child: Wrap(
-              alignment: WrapAlignment.spaceBetween,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: 12,
-              runSpacing: 4,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text('Document library',
-                        style: Theme.of(context).textTheme.titleMedium),
-                    Text('PDF, DOCX or TXT',
-                        style: Theme.of(context).textTheme.bodySmall),
-                  ],
-                ),
-                FilledButton.icon(
-                  onPressed: canImport ? _import : null,
-                  icon: const PrismIcon(PrismGlyph.plus),
-                  label: Text(importing ? 'Importing…' : 'Import'),
-                ),
-              ],
-            ),
+          PrismHero(
+            key: const ValueKey('documents-hero'),
+            variant: PrismHeroVariant.mint,
+            artwork: PrismArtwork.document,
+            status: 'Document library',
+            statusGlyph: PrismGlyph.file,
+            announceStatus: false,
+            title: 'Bring your\nown reading.',
+            detail: const Text('Import a PDF, DOCX or TXT file up to 10 MB.'),
+            actionLabel: importing ? 'Importing…' : 'Import document',
+            actionGlyph: PrismGlyph.plus,
+            actionEnabled: canImport,
+            onAction: canImport ? _import : null,
           ),
-          if (importing)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
-              child: MediaQuery.disableAnimationsOf(context)
-                  ? const SizedBox.shrink()
-                  : const LinearProgressIndicator(
-                      minHeight: 5,
-                      borderRadius: BorderRadius.all(Radius.circular(6)),
-                      color: PrismRelay.amberInk,
-                      backgroundColor: PrismRelay.peachSurface,
-                    ),
+          if (importing && !MediaQuery.disableAnimationsOf(context))
+            const Padding(
+              padding: EdgeInsets.fromLTRB(2, 10, 2, 0),
+              child: LinearProgressIndicator(
+                minHeight: 5,
+                borderRadius: BorderRadius.all(Radius.circular(6)),
+                color: PrismRelay.greenInk,
+                backgroundColor: PrismRelay.mintSurface,
+              ),
             ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 18),
           if (message != null)
             _ErrorBanner(
               message: message,
@@ -146,7 +134,7 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
           else if (!state.isLoading && _lastDocuments.isEmpty)
             const _EmptyLibrary(),
           if (_lastDocuments.isNotEmpty) ...[
-            const _SectionHeader('Library'),
+            const _SectionHeader('Imported documents'),
             const SizedBox(height: 2),
           ],
           for (var index = 0; index < _lastDocuments.length; index++) ...[
@@ -273,26 +261,26 @@ class _EmptyLibrary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(top: 40),
+      padding: const EdgeInsets.only(top: 26),
       child: Column(
         children: [
           DecoratedBox(
             decoration: BoxDecoration(
               color: PrismRelay.mintSurface,
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(16),
             ),
             child: const SizedBox.square(
-              dimension: 64,
+              dimension: 52,
               child: PrismIcon(PrismGlyph.file,
-                  size: 28, color: PrismRelay.greenInk),
+                  size: 24, color: PrismRelay.greenInk),
             ),
           ),
-          const SizedBox(height: 14),
-          Text('No documents yet',
+          const SizedBox(height: 12),
+          Text('Nothing imported yet',
               style: Theme.of(context).textTheme.titleSmall),
           const SizedBox(height: 4),
           Text(
-            'Import a PDF, DOCX or TXT to use it in chat.',
+            'Your PDFs and notes will show up here with their passage counts.',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodySmall,
           ),

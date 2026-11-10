@@ -88,7 +88,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('New Chat'));
+      await tester.tap(find.text('New chat'));
       await tester.pumpAndSettle();
 
       final stored = container.read(conversationRepositoryProvider).getAll();

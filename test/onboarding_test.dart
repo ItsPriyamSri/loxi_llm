@@ -41,141 +41,61 @@ void main() {
     prefs = await SharedPreferences.getInstance();
   });
 
-  group('OnboardingScreen — page content', () {
-    testWidgets('first page shows Welcome to Loki LLM title', (tester) async {
+  group('OnboardingScreen — welcome content', () {
+    testWidgets('shows the welcome headline', (tester) async {
       await tester.pumpWidget(_buildApp(prefs));
       await tester.pump();
 
-      expect(find.text('Welcome to Loki LLM'), findsOneWidget);
+      expect(find.textContaining('Your AI,'), findsOneWidget);
     });
 
-    testWidgets('first page shows privacy-focused body text', (tester) async {
+    testWidgets('shows the offline promise copy', (tester) async {
       await tester.pumpWidget(_buildApp(prefs));
       await tester.pump();
 
       expect(
         find.text(
-          'Private conversations with AI that runs on your phone.',
+          'Download a model once. Then start a conversation, even offline.',
         ),
         findsOneWidget,
       );
     });
 
-    testWidgets('second page shows Download a Model title', (tester) async {
+    testWidgets('shows the brand wordmark', (tester) async {
       await tester.pumpWidget(_buildApp(prefs));
       await tester.pump();
 
-      await tester.tap(find.text('Next'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Download a Model'), findsOneWidget);
+      expect(find.text('Loki LLM'), findsOneWidget);
     });
 
-    testWidgets('third page shows Chat and Use Documents title',
-        (tester) async {
+    testWidgets('offers exactly one action — Get started', (tester) async {
       await tester.pumpWidget(_buildApp(prefs));
       await tester.pump();
 
-      await tester.tap(find.text('Next'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Next'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Chat & Use Documents'), findsOneWidget);
-    });
-  });
-
-  group('OnboardingScreen — navigation buttons', () {
-    testWidgets('first page shows Next button, not Get Started',
-        (tester) async {
-      await tester.pumpWidget(_buildApp(prefs));
-      await tester.pump();
-
-      expect(find.text('Next'), findsOneWidget);
-      expect(find.text('Get Started'), findsNothing);
-    });
-
-    testWidgets('first page does not show Back button', (tester) async {
-      await tester.pumpWidget(_buildApp(prefs));
-      await tester.pump();
-
-      expect(find.text('Back'), findsNothing);
-    });
-
-    testWidgets('second page shows both Back and Next', (tester) async {
-      await tester.pumpWidget(_buildApp(prefs));
-      await tester.pump();
-
-      await tester.tap(find.text('Next'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Back'), findsOneWidget);
-      expect(find.text('Next'), findsOneWidget);
-    });
-
-    testWidgets('third page shows Get Started and Back, no Next',
-        (tester) async {
-      await tester.pumpWidget(_buildApp(prefs));
-      await tester.pump();
-
-      await tester.tap(find.text('Next'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Next'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Get Started'), findsOneWidget);
-      expect(find.text('Back'), findsOneWidget);
-      expect(find.text('Next'), findsNothing);
-    });
-
-    testWidgets('tapping Back on second page returns to first', (tester) async {
-      await tester.pumpWidget(_buildApp(prefs));
-      await tester.pump();
-
-      await tester.tap(find.text('Next'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Download a Model'), findsOneWidget);
-
-      await tester.tap(find.text('Back'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Welcome to Loki LLM'), findsOneWidget);
-      expect(find.text('Back'), findsNothing);
+      expect(find.text('Get started'), findsOneWidget);
+      expect(find.byType(InkWell).hitTestable(), findsOneWidget);
     });
   });
 
   group('OnboardingScreen — finish flow', () {
-    testWidgets('tapping Get Started persists onboarding_complete=true',
+    testWidgets('tapping Get started persists onboarding_complete=true',
         (tester) async {
       await tester.pumpWidget(_buildApp(prefs));
       await tester.pump();
 
-      // Navigate to last page
-      await tester.tap(find.text('Next'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Next'));
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.text('Get Started'));
+      await tester.tap(find.text('Get started'));
       await tester.pumpAndSettle();
 
       expect(prefs.getBool('onboarding_complete'), isTrue);
     });
 
-    testWidgets('tapping Get Started navigates to /models', (tester) async {
+    testWidgets('tapping Get started navigates to /models', (tester) async {
       await tester.pumpWidget(_buildApp(prefs));
       await tester.pump();
 
-      await tester.tap(find.text('Next'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Next'));
+      await tester.tap(find.text('Get started'));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Get Started'));
-      await tester.pumpAndSettle();
-
-      // The stub route renders 'Models' text
       expect(find.text('Models'), findsOneWidget);
     });
   });

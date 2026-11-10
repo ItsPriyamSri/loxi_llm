@@ -94,25 +94,28 @@ class MessageBubble extends StatelessWidget {
           maxWidth: isUser ? MediaQuery.sizeOf(context).width * .82 : 640,
         ),
         decoration: BoxDecoration(
-          color: isUser ? PrismRelay.lilacSoft : PrismRelay.surface,
+          color: isUser ? PrismRelay.lilacSoft : null,
+          gradient: isUser
+              ? null
+              : const LinearGradient(
+                  begin: Alignment(-.4, -.8),
+                  end: Alignment(.4, .9),
+                  colors: [Color(0xFFFFFFFF), Color(0xFFFDFCFF)],
+                ),
           border: Border.all(
               color: isUser ? PrismRelay.lilacBorder : PrismRelay.line),
           borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(16),
-            topRight: const Radius.circular(16),
-            bottomLeft: Radius.circular(isUser ? 16 : 4),
-            bottomRight: Radius.circular(isUser ? 4 : 16),
+            topLeft: const Radius.circular(18),
+            topRight: const Radius.circular(18),
+            bottomLeft: Radius.circular(isUser ? 18 : 4),
+            bottomRight: Radius.circular(isUser ? 4 : 18),
           ),
+          boxShadow: isUser ? null : PrismRelay.hairline,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (!isUser)
-              const Padding(
-                padding: EdgeInsets.only(bottom: 2),
-                child: PrismBrandMark(size: 19),
-              ),
             if (imagePath != null) ...[
               ImageAttachmentThumbnail(path: imagePath!, size: 200),
               const SizedBox(height: 8),
@@ -126,10 +129,9 @@ class MessageBubble extends StatelessWidget {
                     isStreaming: isStreaming,
                   ),
             if (showFooter) ...[
-              const SizedBox(height: 2),
-              Wrap(
-                spacing: 4,
-                crossAxisAlignment: WrapCrossAlignment.center,
+              const SizedBox(height: 4),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   if (speedLabel != null)
                     Text(
@@ -137,7 +139,10 @@ class MessageBubble extends StatelessWidget {
                       style: Theme.of(context)
                           .textTheme
                           .labelSmall
-                          ?.copyWith(color: statColor),
+                          ?.copyWith(
+                            color: statColor,
+                            fontFeatures: PrismRelay.numbers,
+                          ),
                     ),
                   if (timeLabel != null) ...[
                     if (speedLabel != null) const SizedBox(width: 8),
@@ -146,9 +151,13 @@ class MessageBubble extends StatelessWidget {
                       style: Theme.of(context)
                           .textTheme
                           .labelSmall
-                          ?.copyWith(color: statColor),
+                          ?.copyWith(
+                            color: statColor,
+                            fontFeatures: PrismRelay.numbers,
+                          ),
                     ),
                   ],
+                  const Spacer(),
                   if (onCopy != null)
                     _ActionIcon(
                       icon: PrismGlyph.copy,

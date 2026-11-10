@@ -112,7 +112,7 @@ class PrismDock extends StatelessWidget {
                                             .textTheme
                                             .labelSmall
                                             ?.copyWith(
-                                              fontSize: 11,
+                                              fontSize: 11.5,
                                               fontWeight: FontWeight.w700,
                                               letterSpacing: .2,
                                               color: index == selectedIndex

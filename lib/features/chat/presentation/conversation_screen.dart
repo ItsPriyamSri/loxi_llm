@@ -272,6 +272,28 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
     if (stale != null) _storage.deleteImage(stale);
   }
 
+  Future<void> _openAddSheet({
+    required bool agentCapable,
+    required bool canAttachImage,
+  }) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => _AttachSheet(
+        conversationId: widget.conversationId,
+        agentCapable: agentCapable,
+        canAttachImage: canAttachImage,
+        pickingImage: _pickingImage,
+        onPickImage: () {
+          Navigator.of(sheetContext).pop();
+          Haptics.selection();
+          _pickImage();
+        },
+      ),
+    );
+  }
+
   Future<void> _editSystemPrompt() async {
     final conversation =
         ref.read(conversationRepositoryProvider).getById(widget.conversationId);
@@ -480,16 +502,17 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
 
   Widget _shortcuts({required bool centered}) {
     const shortcuts = [
-      ('Translate', 'Translate the following to English:\n'),
-      ('Refine', 'Refine and improve the following text:\n'),
-      ('Summarize', 'Summarize the following in 3 bullet points:\n'),
       ('Explain', 'Explain the following in simple terms:\n'),
+      ('Summarize', 'Summarize the following in 3 bullet points:\n'),
+      ('Refine', 'Refine and improve the following text:\n'),
+      ('Translate', 'Translate the following to English:\n'),
     ];
     final actions = [
       for (final (label, prompt) in shortcuts)
-        ActionChip(
-          label: Text(label),
+        _ShortcutChip(
+          label: label,
           onPressed: () {
+            Haptics.selection();
             _textController.value = TextEditingValue(
               text: prompt,
               selection: TextSelection.collapsed(offset: prompt.length),
@@ -502,14 +525,15 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
         key: const ValueKey('centered-shortcuts'),
         alignment: WrapAlignment.center,
         spacing: 8,
-        runSpacing: 4,
+        runSpacing: 8,
         children: actions,
       );
     }
     return SingleChildScrollView(
+      key: const ValueKey('quick-shortcuts'),
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: Row(spacing: 8, children: actions),
+      child: Row(spacing: 6, children: actions),
     );
   }
 
@@ -622,19 +646,52 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
               inlineOnly: true,
             ),
             if (ready && loadedModel != null)
-              Text(
-                loadedModel.name,
-                style: theme.textTheme.bodySmall,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+              Row(
+                children: [
+                  const PrismIcon(PrismGlyph.lock,
+                      size: 11, color: PrismRelay.violetDeep),
+                  const SizedBox(width: 4),
+                  Flexible(
+                    child: Text(
+                      '${loadedModel.name} · On device',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: PrismRelay.violetDeep,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 11.5,
+                      ),
+                    ),
+                  ),
+                ],
               ),
           ],
         ),
         actions: [
-          IconButton(
-            tooltip: 'System prompt',
-            icon: const PrismIcon(PrismGlyph.book),
-            onPressed: _editSystemPrompt,
+          Stack(
+            alignment: Alignment.topRight,
+            clipBehavior: Clip.none,
+            children: [
+              IconButton(
+                tooltip: 'System prompt',
+                icon: const PrismIcon(PrismGlyph.book),
+                onPressed: _editSystemPrompt,
+              ),
+              if (conversation.systemPrompt.isNotEmpty)
+                const Positioned(
+                  top: 9,
+                  right: 9,
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: PrismRelay.accent,
+                        shape: BoxShape.circle,
+                      ),
+                      child: SizedBox.square(dimension: 8),
+                    ),
+                  ),
+                ),
+            ],
           ),
           PopupMenuButton<String>(
             icon: const PrismIcon(PrismGlyph.more),
@@ -653,16 +710,32 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
           ),
         ],
       ),
-      body: DecoratedBox(
-        decoration: const BoxDecoration(
-          gradient: RadialGradient(
-            center: Alignment(-.85, -.75),
-            radius: 1.05,
-            colors: [PrismRelay.atmosphere, PrismRelay.canvas],
+      body: Stack(
+        children: [
+          const Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  center: Alignment(-.95, -.85),
+                  radius: 1.2,
+                  colors: [Color(0x66E9DFF7), Color(0x00E9DFF7)],
+                ),
+              ),
+            ),
           ),
-        ),
-        child: LayoutBuilder(
-          builder: (context, viewport) => Column(
+          const Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  center: Alignment(1.05, .9),
+                  radius: 1.25,
+                  colors: [Color(0x55FDEBDD), Color(0x00FDEBDD)],
+                ),
+              ),
+            ),
+          ),
+          LayoutBuilder(
+            builder: (context, viewport) => Column(
             children: [
               if (!ready)
                 Padding(
@@ -697,44 +770,95 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                   ),
                   data: (chatState) {
                     if (blank) {
-                      final showPrompts = conversation.systemPrompt.isEmpty &&
+                      final showTemplates = conversation.systemPrompt.isEmpty &&
                           prompts.isNotEmpty;
                       return Center(
                         child: SingleChildScrollView(
-                          padding: const EdgeInsets.all(20),
+                          padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
                           child: AnimatedSwitcher(
                             duration: MediaQuery.disableAnimationsOf(context)
                                 ? Duration.zero
                                 : PrismRelay.motion,
-                            child: showPrompts
+                            switchInCurve: PrismRelay.curve,
+                            switchOutCurve: PrismRelay.curve,
+                            child: showTemplates
                                 ? Column(
                                     key: const ValueKey('saved-prompts'),
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Text('Start with a saved prompt',
-                                          style: theme.textTheme.titleMedium),
-                                      const SizedBox(height: 10),
-                                      Wrap(
-                                        alignment: WrapAlignment.center,
-                                        spacing: 8,
-                                        runSpacing: 4,
-                                        children: [
-                                          for (final prompt in prompts)
-                                            ActionChip(
-                                              label: Text(prompt.name),
-                                              onPressed: () => modeActions
-                                                  .updateSystemPrompt(
-                                                      widget.conversationId,
-                                                      prompt.body),
-                                            ),
-                                        ],
+                                      const PrismBrandMark(size: 46),
+                                      const SizedBox(height: 16),
+                                      Text(
+                                        "What's on your mind?",
+                                        textAlign: TextAlign.center,
+                                        style: theme.textTheme.displaySmall,
                                       ),
-                                      TextButton(
-                                          onPressed: _editSystemPrompt,
-                                          child: const Text('More')),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        'Pick a template, or ask Loki anything.',
+                                        textAlign: TextAlign.center,
+                                        style: theme.textTheme.bodyMedium
+                                            ?.copyWith(
+                                                color: PrismRelay.inkSecondary),
+                                      ),
+                                      const SizedBox(height: 18),
+                                      GridView.builder(
+                                        shrinkWrap: true,
+                                        physics:
+                                            const NeverScrollableScrollPhysics(),
+                                        gridDelegate:
+                                            const SliverGridDelegateWithFixedCrossAxisCount(
+                                          crossAxisCount: 2,
+                                          mainAxisSpacing: 8,
+                                          crossAxisSpacing: 8,
+                                          childAspectRatio: 3.1,
+                                        ),
+                                        itemCount: prompts.length,
+                                        itemBuilder: (context, index) =>
+                                            _TemplateChip(
+                                          name: prompts[index].name,
+                                          onTap: () {
+                                            Haptics.selection();
+                                            modeActions.updateSystemPrompt(
+                                                widget.conversationId,
+                                                prompts[index].body);
+                                          },
+                                        ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      TextButton.icon(
+                                        key: const ValueKey('more-templates'),
+                                        onPressed: () => context.push('/prompts'),
+                                        iconAlignment: IconAlignment.end,
+                                        icon: const PrismIcon(PrismGlyph.chevron,
+                                            size: 18),
+                                        label: const Text('More templates'),
+                                      ),
                                     ],
                                   )
-                                : _shortcuts(centered: true),
+                                : Column(
+                                    key: const ValueKey('center-shortcuts'),
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const PrismBrandMark(size: 46),
+                                      const SizedBox(height: 16),
+                                      Text(
+                                        "What's on your mind?",
+                                        textAlign: TextAlign.center,
+                                        style: theme.textTheme.displaySmall,
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        'Short on words? Start with one of these.',
+                                        textAlign: TextAlign.center,
+                                        style: theme.textTheme.bodyMedium
+                                            ?.copyWith(
+                                                color: PrismRelay.inkSecondary),
+                                      ),
+                                      const SizedBox(height: 18),
+                                      _shortcuts(centered: true),
+                                    ],
+                                  ),
                           ),
                         ),
                       );
@@ -754,11 +878,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                               isUser: false,
                               isStreaming: true,
                               child: text.isEmpty
-                                  ? Semantics(
-                                      liveRegion: true,
-                                      child: const Text(
-                                          'Thinking…'),
-                                    )
+                                  ? const _ThinkingRow()
                                   : null,
                             );
                           }
@@ -803,18 +923,30 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                   },
                 ),
               ),
-              if (showJump)
-                TextButton.icon(
-                  onPressed: () {
-                    setState(() {
-                      _following = true;
-                      _newerBelow = false;
-                    });
-                    _scrollToBottom();
-                  },
-                  icon: const PrismIcon(PrismGlyph.down, size: 18),
-                  label: const Text('Jump to latest'),
-                ),
+              AnimatedSwitcher(
+                duration: MediaQuery.disableAnimationsOf(context)
+                    ? Duration.zero
+                    : PrismRelay.motion,
+                child: showJump
+                    ? Align(
+                        key: const ValueKey('jump-pill'),
+                        alignment: Alignment.center,
+                        child: Padding(
+                          padding: const EdgeInsets.only(bottom: 2),
+                          child: _JumpPill(
+                            onTap: () {
+                              Haptics.selection();
+                              setState(() {
+                                _following = true;
+                                _newerBelow = false;
+                              });
+                              _scrollToBottom();
+                            },
+                          ),
+                        ),
+                      )
+                    : const SizedBox.shrink(key: ValueKey('jump-pill-hidden')),
+              ),
               if (error != null)
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -850,7 +982,9 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                     ),
                   ),
                 ),
-              if (messages.isNotEmpty &&
+              if (blank &&
+                  conversation.systemPrompt.isEmpty &&
+                  prompts.isNotEmpty &&
                   !isStreaming &&
                   MediaQuery.viewInsetsOf(context).bottom == 0)
                 _shortcuts(centered: false),
@@ -860,9 +994,9 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     color: PrismRelay.surface,
-                    borderRadius: BorderRadius.circular(19),
+                    borderRadius: BorderRadius.circular(20),
                     border: Border.all(color: PrismRelay.lineStrong),
-                    boxShadow: PrismRelay.shadow,
+                    boxShadow: PrismRelay.shadowRaised,
                   ),
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
@@ -888,69 +1022,20 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                               ],
                             ),
                           ),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 6,
-                          children: [
-                            _ModePill(
-                              label: 'Documents',
-                              glyph: PrismGlyph.file,
-                              selected: conversation.ragEnabled,
-                              enabled: true,
-                              selectedFill: PrismRelay.mintSurface,
-                              selectedBorder: PrismRelay.mintBorder,
-                              selectedInk: PrismRelay.greenInk,
-                              tooltip: conversation.ragEnabled
-                                  ? 'Turn off Documents'
-                                  : 'Turn on Documents',
-                              onTap: () {
-                                Haptics.selection();
-                                modeActions
-                                    .toggleRagEnabled(widget.conversationId);
-                              },
-                            ),
-                            const SizedBox(width: 8),
-                            _ModePill(
-                              label: 'Tools',
-                              glyph: PrismGlyph.tools,
-                              selected:
-                                  agentCapable && conversation.toolsEnabled,
-                              enabled: agentCapable,
-                              selectedFill: PrismRelay.lilacSoft,
-                              selectedBorder: PrismRelay.lilacBorder,
-                              selectedInk: PrismRelay.plum,
-                              tooltip: !agentCapable
-                                  ? 'Tools require a model that supports tool calls'
-                                  : conversation.toolsEnabled
-                                      ? 'Turn off Tools'
-                                      : 'Turn on Tools',
-                              onTap: () {
-                                Haptics.selection();
-                                modeActions
-                                    .toggleToolsEnabled(widget.conversationId);
-                              },
-                            ),
-                          ],
-                        ),
                         Row(
                           children: [
                             IconButton(
-                              icon: PrismIcon(
-                                PrismGlyph.image,
-                                color: canAttachImage
-                                    ? PrismRelay.inkSecondary
-                                    : PrismRelay.inkMuted
-                                        .withValues(alpha: .38),
-                              ),
-                              tooltip: canAttachImage
-                                  ? 'Attach image'
-                                  : 'Attaching images requires a vision-capable model',
-                              onPressed: canAttachImage && !_pickingImage
-                                  ? () {
-                                      Haptics.selection();
-                                      _pickImage();
-                                    }
-                                  : null,
+                              key: const ValueKey('add-to-message'),
+                              icon: const PrismIcon(PrismGlyph.plus,
+                                  color: PrismRelay.inkSecondary),
+                              tooltip: 'Add to message',
+                              onPressed: () {
+                                Haptics.selection();
+                                _openAddSheet(
+                                  agentCapable: agentCapable,
+                                  canAttachImage: canAttachImage,
+                                );
+                              },
                             ),
                             Expanded(
                               child: TextField(
@@ -961,9 +1046,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                                   filled: false,
                                   border: InputBorder.none,
                                   enabledBorder: InputBorder.none,
-                                  focusedBorder: UnderlineInputBorder(
-                                      borderSide: BorderSide(
-                                          color: PrismRelay.periwinkle)),
+                                  focusedBorder: InputBorder.none,
                                   contentPadding: EdgeInsets.symmetric(
                                       horizontal: 6, vertical: 8),
                                 ),
@@ -985,9 +1068,14 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                                         : 'Stop generating'
                                     : 'Send message',
                                 style: IconButton.styleFrom(
-                                  minimumSize: const Size.square(48),
-                                  backgroundColor: PrismRelay.accent,
+                                  minimumSize: const Size.square(46),
+                                  backgroundColor: isStreaming
+                                      ? PrismRelay.violetDeep
+                                      : PrismRelay.accent,
                                   foregroundColor: PrismRelay.surface,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(13),
+                                  ),
                                 ),
                                 icon: PrismIcon(isStreaming
                                     ? PrismGlyph.stop
@@ -1014,92 +1102,428 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
             ],
           ),
         ),
+        ],
       ),
     );
   }
 }
 
-/// Composer mode toggle rendered as an icon + label pair. The selected
-/// state fills the pill with the mode's semantic tint; a disabled pill
-/// (model lacks the capability) renders as clear grey, never as ink.
-class _ModePill extends StatelessWidget {
-  const _ModePill({
-    required this.label,
-    required this.glyph,
-    required this.selected,
-    required this.enabled,
-    required this.selectedFill,
-    required this.selectedBorder,
-    required this.selectedInk,
-    required this.tooltip,
-    required this.onTap,
-  });
+/// Compact shortcut chip shown above the composer (and centered in the
+/// blank state once a template is chosen). Quiet fill, ink text, one
+/// saturated tint per chip is not used — the action is the color.
+class _ShortcutChip extends StatelessWidget {
+  const _ShortcutChip({required this.label, required this.onPressed});
 
   final String label;
-  final PrismGlyph glyph;
-  final bool selected;
-  final bool enabled;
-  final Color selectedFill;
-  final Color selectedBorder;
-  final Color selectedInk;
-  final String tooltip;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      type: MaterialType.transparency,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(10),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 36, minWidth: 48),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const PrismIcon(PrismGlyph.spark,
+                    size: 13, color: PrismRelay.plum),
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: PrismRelay.violetDeep,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12.5,
+                      ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One cell of the 2 x 3 starter-template grid on the blank new-chat page.
+class _TemplateChip extends StatelessWidget {
+  const _TemplateChip({required this.name, required this.onTap});
+
+  final String name;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final reduceMotion = MediaQuery.disableAnimationsOf(context);
-    final duration = reduceMotion ? Duration.zero : PrismRelay.motion;
-    final fg = !enabled
-        ? PrismRelay.inkMuted.withValues(alpha: .42)
-        : selected
-            ? selectedInk
-            : PrismRelay.inkSecondary;
-    return Tooltip(
-      message: tooltip,
-      child: Semantics(
-        toggled: enabled && selected,
-        button: true,
-        enabled: enabled,
-        label: label,
-        child: Material(
-          type: MaterialType.transparency,
-          borderRadius: BorderRadius.circular(12),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(12),
-            onTap: enabled
-                ? onTap
-                : () => ScaffoldMessenger.of(context)
-                    .showSnackBar(SnackBar(content: Text(tooltip))),
-            child: AnimatedContainer(
-              duration: duration,
-              curve: PrismRelay.curve,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-              decoration: BoxDecoration(
-                color: enabled && selected ? selectedFill : Colors.transparent,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: enabled && selected
-                      ? selectedBorder
-                      : enabled
-                          ? PrismRelay.lineStrong
-                          : PrismRelay.line,
-                ),
-              ),
+    return Material(
+      type: MaterialType.transparency,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 48),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: PrismRelay.surface,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: PrismRelay.lineStrong),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               child: Row(
-                mainAxisSize: MainAxisSize.min,
                 children: [
-                  PrismIcon(glyph, size: 15, color: fg),
-                  const SizedBox(width: 6),
-                  Text(
-                    label,
-                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                          color: fg,
-                          fontWeight:
-                              enabled && selected ? FontWeight.w800 : FontWeight.w600,
-                        ),
+                  const PrismIcon(PrismGlyph.book,
+                      size: 15, color: PrismRelay.plum),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 12.5,
+                            height: 1.2,
+                            color: PrismRelay.ink,
+                          ),
+                    ),
                   ),
                 ],
               ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Floating "Jump to latest" pill shown while the user reads older turns.
+class _JumpPill extends StatelessWidget {
+  const _JumpPill({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      type: MaterialType.transparency,
+      borderRadius: BorderRadius.circular(19),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(19),
+        child: Container(
+          height: 38,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            color: PrismRelay.surface,
+            borderRadius: BorderRadius.circular(19),
+            border: Border.all(color: PrismRelay.lineStrong),
+            boxShadow: PrismRelay.shadowRaised,
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              PrismIcon(PrismGlyph.down, size: 15, color: PrismRelay.violetDeep),
+              SizedBox(width: 7),
+              Text(
+                'Jump to latest',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w800,
+                  color: PrismRelay.violetDeep,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Waiting-on-first-token row: three wave dots and a label, never a spinner
+/// over text. Reduced motion renders the static label.
+class _ThinkingRow extends StatefulWidget {
+  const _ThinkingRow();
+
+  @override
+  State<_ThinkingRow> createState() => _ThinkingRowState();
+}
+
+class _ThinkingRowState extends State<_ThinkingRow>
+    with SingleTickerProviderStateMixin {
+  static final _inTest = WidgetsBinding.instance.runtimeType
+      .toString()
+      .contains('TestWidgetsFlutterBinding');
+
+  late final AnimationController _clock = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final still = MediaQuery.disableAnimationsOf(context) || _inTest;
+    if (still) {
+      _clock.stop();
+    } else if (!_clock.isAnimating) {
+      _clock.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    _clock.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final label = Theme.of(context).textTheme.bodyMedium?.copyWith(
+          color: PrismRelay.inkSecondary,
+          fontWeight: FontWeight.w600,
+        );
+    final reduce = MediaQuery.disableAnimationsOf(context) || _inTest;
+    return Semantics(
+      liveRegion: true,
+      label: 'Thinking…',
+      child: ExcludeSemantics(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 30,
+              child: reduce
+                  ? const _Dots(phase: 0)
+                  : AnimatedBuilder(
+                      animation: _clock,
+                      builder: (_, __) => _Dots(phase: _clock.value),
+                    ),
+            ),
+            const SizedBox(width: 8),
+            Text('Thinking…', style: label),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Dots extends StatelessWidget {
+  const _Dots({required this.phase});
+
+  final double phase;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        for (var i = 0; i < 3; i++)
+          _Dot(wave: Curves.easeInOut.transform((phase + i * .18) % 1.0)),
+      ],
+    );
+  }
+}
+
+class _Dot extends StatelessWidget {
+  const _Dot({required this.wave});
+
+  /// 0 resting → 1 crest.
+  final double wave;
+
+  @override
+  Widget build(BuildContext context) {
+    final lift = wave < .5 ? wave * 2 : (1 - wave) * 2;
+    return Transform.translate(
+      offset: Offset(0, -3 * lift),
+      child: Opacity(
+        opacity: .35 + .65 * lift,
+        child: const DecoratedBox(
+          decoration: BoxDecoration(
+            color: PrismRelay.accent,
+            shape: BoxShape.circle,
+          ),
+          child: SizedBox.square(dimension: 6),
+        ),
+      ),
+    );
+  }
+}
+
+/// The "+" sheet: one place for everything that is not typed text —
+/// attaching a photo, per-chat Documents and Tools. Tools the current model
+/// cannot call are shown greyed and stay unclickable.
+class _AttachSheet extends ConsumerWidget {
+  const _AttachSheet({
+    required this.conversationId,
+    required this.agentCapable,
+    required this.canAttachImage,
+    required this.pickingImage,
+    required this.onPickImage,
+  });
+
+  final String conversationId;
+  final bool agentCapable;
+  final bool canAttachImage;
+  final bool pickingImage;
+  final VoidCallback onPickImage;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final conversations = ref.watch(conversationListNotifierProvider);
+    final conversation = conversations.valueOrNull
+        ?.where((item) => item.id == conversationId)
+        .firstOrNull;
+    final rag = conversation?.ragEnabled ?? false;
+    final tools = conversation?.toolsEnabled ?? false;
+    final actions = ref.read(conversationListNotifierProvider.notifier);
+
+    return SafeArea(
+      top: false,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(12, 2, 12, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 0, 8, 10),
+              child: Text('Add to this message',
+                  style: Theme.of(context).textTheme.headlineSmall),
+            ),
+            _AttachRow(
+              glyph: PrismGlyph.image,
+              tile: PrismRelay.lilacSoft,
+              tileInk: PrismRelay.plum,
+              title: 'Attach an image',
+              subtitle: canAttachImage
+                  ? 'For the vision model loaded on this phone'
+                  : 'Needs a vision-capable model',
+              enabled: canAttachImage && !pickingImage,
+              onTap: onPickImage,
+            ),
+            _AttachRow(
+              glyph: PrismGlyph.file,
+              tile: PrismRelay.mintSurface,
+              tileInk: PrismRelay.greenInk,
+              title: 'Documents',
+              subtitle: 'Answers use your imported documents',
+              enabled: true,
+              onTap: () {
+                Haptics.selection();
+                actions.toggleRagEnabled(conversationId);
+              },
+              trailing: Switch(
+                value: rag,
+                onChanged: (_) {
+                  Haptics.selection();
+                  actions.toggleRagEnabled(conversationId);
+                },
+              ),
+            ),
+            _AttachRow(
+              glyph: PrismGlyph.tools,
+              tile: PrismRelay.peachSurface,
+              tileInk: PrismRelay.amberInk,
+              title: 'Tools',
+              subtitle: agentCapable
+                  ? 'Loki may call your allowed tools'
+                  : 'Needs a model that can call tools',
+              enabled: agentCapable,
+              onTap: agentCapable
+                  ? () {
+                      Haptics.selection();
+                      actions.toggleToolsEnabled(conversationId);
+                    }
+                  : null,
+              trailing: Switch(
+                value: agentCapable && tools,
+                onChanged: agentCapable
+                    ? (_) {
+                        Haptics.selection();
+                        actions.toggleToolsEnabled(conversationId);
+                      }
+                    : null,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AttachRow extends StatelessWidget {
+  const _AttachRow({
+    required this.glyph,
+    required this.tile,
+    required this.tileInk,
+    required this.title,
+    required this.subtitle,
+    required this.enabled,
+    required this.onTap,
+    this.trailing,
+  });
+
+  final PrismGlyph glyph;
+  final Color tile;
+  final Color tileInk;
+  final String title;
+  final String subtitle;
+  final bool enabled;
+  final VoidCallback? onTap;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final dim = !enabled;
+    return Opacity(
+      opacity: dim ? .42 : 1,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 62),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              children: [
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: tile,
+                    borderRadius: BorderRadius.circular(11),
+                  ),
+                  child: SizedBox.square(
+                    dimension: 38,
+                    child: PrismIcon(glyph, size: 18, color: tileInk),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title, style: theme.textTheme.titleSmall),
+                      Text(subtitle, style: theme.textTheme.bodySmall),
+                    ],
+                  ),
+                ),
+                if (trailing != null) ...[
+                  const SizedBox(width: 8),
+                  IgnorePointer(child: trailing),
+                ],
+              ],
             ),
           ),
         ),

@@ -255,7 +255,7 @@ class ChatNotifier extends _$ChatNotifier {
       final conversation = convRepo.getById(conversationId);
       if (conversation != null) {
         final loadedId = loadedModel?.id ?? '';
-        final nextTitle = conversation.title == 'New conversation'
+        final nextTitle = conversation.title == 'New chat'
             ? firstMessageTitle(userText)
             : conversation.title;
         final nextModelId =

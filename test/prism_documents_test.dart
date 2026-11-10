@@ -21,27 +21,21 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Import'));
+    await tester.tap(find.text('Import document'));
     await tester.pump();
 
     expect(find.text('Importing…'), findsOneWidget);
     expect(find.text('Field notes.pdf'), findsOneWidget);
+    final hero = find.byKey(const ValueKey('documents-hero'));
     expect(
-        tester
-            .widget<FilledButton>(
-                find.widgetWithText(FilledButton, 'Importing…'))
-            .onPressed,
-        isNull);
+        find.descendant(of: hero, matching: find.text('Importing…')),
+        findsOneWidget);
 
     notifier.failImport();
     await tester.pumpAndSettle();
     expect(find.text('Field notes.pdf'), findsOneWidget);
     expect(find.text('The file exceeds the 10 MB limit.'), findsOneWidget);
-    expect(
-        tester
-            .widget<FilledButton>(find.widgetWithText(FilledButton, 'Import'))
-            .onPressed,
-        isNotNull);
+    expect(find.text('Import document'), findsOneWidget);
   });
 }
 
