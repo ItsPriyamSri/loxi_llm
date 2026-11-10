@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/platform/haptics.dart';
+import '../../../core/theme/prism_relay.dart';
+import '../../../core/widgets/prism_icon.dart';
 import 'settings_notifier.dart';
 
 class PromptLibraryScreen extends ConsumerWidget {
@@ -13,38 +16,105 @@ class PromptLibraryScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: const Text('Prompts'),
         actions: [
           IconButton(
             tooltip: 'Add prompt',
-            onPressed: () => _editPrompt(context, notifier),
-            icon: const Icon(Icons.add),
+            onPressed: () {
+              Haptics.tap();
+              _editPrompt(context, notifier);
+            },
+            icon: const PrismIcon(PrismGlyph.plus),
           ),
         ],
       ),
       body: prompts.isEmpty
-          ? const Center(child: Text('No saved prompts'))
-          : ListView(
-              children: [
-                for (final prompt in prompts)
-                  ListTile(
-                    title: Text(prompt.name),
-                    subtitle: Text(
-                      prompt.body,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+          ? Padding(
+              padding: const EdgeInsets.only(top: 44),
+              child: Column(
+                children: [
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: PrismRelay.lilacSoft,
+                      borderRadius: BorderRadius.circular(20),
                     ),
-                    onTap: () => _editPrompt(
+                    child: const SizedBox.square(
+                      dimension: 72,
+                      child: PrismIcon(PrismGlyph.book,
+                          size: 30, color: PrismRelay.plum),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text('No saved prompts',
+                      style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Save a system prompt once, reuse it in any chat.',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 18),
+                  FilledButton.icon(
+                    onPressed: () {
+                      Haptics.tap();
+                      _editPrompt(context, notifier);
+                    },
+                    icon: const PrismIcon(PrismGlyph.plus, size: 18),
+                    label: const Text('Add a prompt'),
+                  ),
+                ],
+              ),
+            )
+          : ListView(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 20),
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(6, 10, 6, 6),
+                  child: Semantics(
+                    header: true,
+                    child: Text(
+                      'LIBRARY',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            color: PrismRelay.inkMuted,
+                            fontSize: 11,
+                            letterSpacing: 1.4,
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                  ),
+                ),
+                for (var index = 0; index < prompts.length; index++)
+                  _PromptRow(
+                    prompt: prompts[index],
+                    showDivider: index != prompts.length - 1,
+                    onEdit: () => _editPrompt(
                       context,
                       notifier,
-                      existing: prompt,
+                      existing: prompts[index],
                     ),
-                    trailing: IconButton(
-                      tooltip: 'Delete',
-                      onPressed: () => notifier.deletePrompt(prompt.name),
-                      icon: const Icon(Icons.delete_outline),
-                    ),
+                    onDelete: () async {
+                      final confirmed = await showDialog<bool>(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: const Text('Delete prompt?'),
+                          content: Text(prompts[index].name),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, false),
+                              child: const Text('Cancel'),
+                            ),
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, true),
+                              child: const Text('Delete'),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (confirmed == true && context.mounted) {
+                        Haptics.tap();
+                        notifier.deletePrompt(prompts[index].name);
+                      }
+                    },
                   ),
               ],
             ),
@@ -127,6 +197,7 @@ class _PromptEditorState extends State<_PromptEditor> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
+      scrollable: true,
       title: Text(widget.existing == null ? 'Add prompt' : 'Edit prompt'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
@@ -134,7 +205,7 @@ class _PromptEditorState extends State<_PromptEditor> {
           TextField(
             controller: _name,
             decoration: const InputDecoration(
-              hintText: 'Name',
+              labelText: 'Name',
               border: OutlineInputBorder(),
             ),
           ),
@@ -143,7 +214,7 @@ class _PromptEditorState extends State<_PromptEditor> {
             controller: _body,
             maxLines: 5,
             decoration: const InputDecoration(
-              hintText: 'System prompt',
+              labelText: 'System prompt',
               border: OutlineInputBorder(),
             ),
           ),
@@ -189,6 +260,7 @@ class _PromptNameDialogState extends State<_PromptNameDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
+      scrollable: true,
       title: const Text('Save to library'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
@@ -197,7 +269,7 @@ class _PromptNameDialogState extends State<_PromptNameDialog> {
             controller: _name,
             autofocus: true,
             decoration: const InputDecoration(
-              hintText: 'Name',
+              labelText: 'Name',
               border: OutlineInputBorder(),
             ),
           ),
@@ -235,3 +307,80 @@ class _PromptNameDialogState extends State<_PromptNameDialog> {
   }
 }
 
+class _PromptRow extends StatelessWidget {
+  const _PromptRow({
+    required this.prompt,
+    required this.onEdit,
+    required this.onDelete,
+    this.showDivider = true,
+  });
+
+  final SavedPrompt prompt;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+  final bool showDivider;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      children: [
+        InkWell(
+          onTap: onEdit,
+          borderRadius: BorderRadius.circular(14),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(6, 10, 2, 10),
+            child: Row(
+              children: [
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: PrismRelay.lilacSoft,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const SizedBox.square(
+                    dimension: 40,
+                    child: PrismIcon(PrismGlyph.book,
+                        size: 20, color: PrismRelay.plum),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        prompt.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleSmall,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        prompt.body,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(fontSize: 12.5),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Delete',
+                  onPressed: onDelete,
+                  icon: const PrismIcon(PrismGlyph.trash,
+                      size: 19, color: PrismRelay.inkMuted),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (showDivider)
+          const Divider(
+            height: 1,
+            indent: 58,
+            color: PrismRelay.line,
+          ),
+      ],
+    );
+  }
+}

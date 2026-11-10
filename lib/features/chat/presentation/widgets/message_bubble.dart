@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/platform/haptics.dart';
+import '../../../../core/theme/prism_relay.dart';
+import '../../../../core/widgets/prism_icon.dart';
 import 'chat_markdown_text.dart';
 import 'image_attachment_thumbnail.dart';
 
@@ -72,11 +75,7 @@ class MessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final statColor = (isUser
-            ? colorScheme.onPrimaryContainer
-            : colorScheme.onSecondaryContainer)
-        .withValues(alpha: 0.7);
+    const statColor = PrismRelay.inkMuted;
     final showFooter = !isStreaming &&
         (speedLabel != null ||
             timeLabel != null ||
@@ -85,17 +84,19 @@ class MessageBubble extends StatelessWidget {
             onStopReadAloud != null);
 
     return Align(
-      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+      alignment: isUser
+          ? AlignmentDirectional.centerEnd
+          : AlignmentDirectional.centerStart,
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        margin: const EdgeInsets.symmetric(vertical: 5),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.75,
+          maxWidth: isUser ? MediaQuery.sizeOf(context).width * .82 : 640,
         ),
         decoration: BoxDecoration(
-          color: isUser
-              ? colorScheme.primaryContainer
-              : colorScheme.secondaryContainer,
+          color: isUser ? PrismRelay.lilacSoft : PrismRelay.surface,
+          border: Border.all(
+              color: isUser ? PrismRelay.lilacBorder : PrismRelay.line),
           borderRadius: BorderRadius.only(
             topLeft: const Radius.circular(16),
             topRight: const Radius.circular(16),
@@ -103,96 +104,91 @@ class MessageBubble extends StatelessWidget {
             bottomRight: Radius.circular(isUser ? 4 : 16),
           ),
         ),
-        child: IntrinsicWidth(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (imagePath != null) ...[
-                ImageAttachmentThumbnail(path: imagePath!, size: 200),
-                const SizedBox(height: 8),
-              ],
-              if (child != null || (content?.isNotEmpty ?? false))
-                child ??
-                    ChatMarkdownText(
-                      content!,
-                      style: TextStyle(
-                        color: isUser
-                            ? colorScheme.onPrimaryContainer
-                            : colorScheme.onSecondaryContainer,
-                      ),
-                      isStreaming: isStreaming,
-                    ),
-              if (showFooter) ...[
-                const SizedBox(height: 2),
-                Row(
-                  children: [
-                    if (speedLabel != null)
-                      Text(
-                        speedLabel!,
-                        style: Theme.of(context)
-                            .textTheme
-                            .labelSmall
-                            ?.copyWith(color: statColor),
-                      ),
-                    if (timeLabel != null) ...[
-                      if (speedLabel != null) const SizedBox(width: 8),
-                      Text(
-                        timeLabel!,
-                        style: Theme.of(context)
-                            .textTheme
-                            .labelSmall
-                            ?.copyWith(color: statColor),
-                      ),
-                    ],
-                    const Spacer(),
-                    if (onCopy != null)
-                      _ActionIcon(
-                        icon: Icons.copy_outlined,
-                        tooltip: 'Copy message',
-                        onPressed: onCopy!,
-                        color: isUser
-                            ? colorScheme.onPrimaryContainer
-                            : colorScheme.onSecondaryContainer,
-                      ),
-                    if (onReadAloud != null)
-                      _ActionIcon(
-                        icon: isPaused
-                            ? Icons.play_circle_outlined
-                            : isSpeaking
-                                ? Icons.pause_circle_outlined
-                                : Icons.volume_up_outlined,
-                        tooltip: isPaused
-                            ? 'Resume reading'
-                            : isSpeaking
-                                ? 'Pause reading'
-                                : 'Read aloud',
-                        onPressed: onReadAloud!,
-                        color: isUser
-                            ? colorScheme.onPrimaryContainer
-                            : colorScheme.onSecondaryContainer,
-                      ),
-                    if (onStopReadAloud != null)
-                      _ActionIcon(
-                        icon: Icons.stop_circle_outlined,
-                        tooltip: 'Stop reading',
-                        onPressed: onStopReadAloud!,
-                        color: isUser
-                            ? colorScheme.onPrimaryContainer
-                            : colorScheme.onSecondaryContainer,
-                      ),
-                  ],
-                ),
-              ],
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (!isUser)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 2),
+                child: PrismBrandMark(size: 19),
+              ),
+            if (imagePath != null) ...[
+              ImageAttachmentThumbnail(path: imagePath!, size: 200),
+              const SizedBox(height: 8),
             ],
-          ),
+            if (child != null || (content?.isNotEmpty ?? false))
+              child ??
+                  ChatMarkdownText(
+                    content!,
+                    style: const TextStyle(
+                        color: PrismRelay.ink, fontSize: 15, height: 1.5),
+                    isStreaming: isStreaming,
+                  ),
+            if (showFooter) ...[
+              const SizedBox(height: 2),
+              Wrap(
+                spacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  if (speedLabel != null)
+                    Text(
+                      speedLabel!,
+                      style: Theme.of(context)
+                          .textTheme
+                          .labelSmall
+                          ?.copyWith(color: statColor),
+                    ),
+                  if (timeLabel != null) ...[
+                    if (speedLabel != null) const SizedBox(width: 8),
+                    Text(
+                      timeLabel!,
+                      style: Theme.of(context)
+                          .textTheme
+                          .labelSmall
+                          ?.copyWith(color: statColor),
+                    ),
+                  ],
+                  if (onCopy != null)
+                    _ActionIcon(
+                      icon: PrismGlyph.copy,
+                      tooltip: 'Copy message',
+                      onPressed: onCopy!,
+                      color: PrismRelay.inkSecondary,
+                    ),
+                  if (onReadAloud != null)
+                    _ActionIcon(
+                      icon: isPaused
+                          ? PrismGlyph.play
+                          : isSpeaking
+                              ? PrismGlyph.pause
+                              : PrismGlyph.audio,
+                      tooltip: isPaused
+                          ? 'Resume reading'
+                          : isSpeaking
+                              ? 'Pause reading'
+                              : 'Read aloud',
+                      onPressed: onReadAloud!,
+                      color: PrismRelay.inkSecondary,
+                    ),
+                  if (onStopReadAloud != null)
+                    _ActionIcon(
+                      icon: PrismGlyph.stop,
+                      tooltip: 'Stop reading',
+                      onPressed: onStopReadAloud!,
+                      color: PrismRelay.inkSecondary,
+                    ),
+                ],
+              ),
+            ],
+          ],
         ),
       ),
     );
   }
 }
 
-class _ActionIcon extends StatelessWidget {
+class _ActionIcon extends StatefulWidget {
   const _ActionIcon({
     required this.icon,
     required this.tooltip,
@@ -200,21 +196,56 @@ class _ActionIcon extends StatelessWidget {
     required this.color,
   });
 
-  final IconData icon;
+  final PrismGlyph icon;
   final String tooltip;
   final VoidCallback onPressed;
   final Color color;
 
   @override
+  State<_ActionIcon> createState() => _ActionIconState();
+}
+
+class _ActionIconState extends State<_ActionIcon> {
+  bool _justCopied = false;
+
+  static const _flash = Duration(milliseconds: 1400);
+
+  @override
   Widget build(BuildContext context) {
+    // The copy affordance acknowledges the tap by morphing into a check.
+    final morph = widget.icon == PrismGlyph.copy;
+    final shownGlyph = morph && _justCopied ? PrismGlyph.check : widget.icon;
+    final shownTooltip = morph && _justCopied ? 'Copied' : widget.tooltip;
     return IconButton(
-      icon: Icon(icon, size: 18),
-      tooltip: tooltip,
-      visualDensity: VisualDensity.compact,
-      padding: EdgeInsets.zero,
-      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-      color: color.withValues(alpha: 0.75),
-      onPressed: onPressed,
+      icon: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 160),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        transitionBuilder: (child, animation) => ScaleTransition(
+          scale: Tween(begin: .6, end: 1.0).animate(
+            CurvedAnimation(parent: animation, curve: Curves.easeOutBack),
+          ),
+          child: FadeTransition(opacity: animation, child: child),
+        ),
+        child: PrismIcon(
+          shownGlyph,
+          key: ValueKey(shownGlyph),
+          size: 17,
+          color: morph && _justCopied ? PrismRelay.greenInk : widget.color,
+        ),
+      ),
+      tooltip: shownTooltip,
+      constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+      color: widget.color,
+      onPressed: () {
+        widget.onPressed();
+        Haptics.selection();
+        if (!morph || _justCopied) return;
+        setState(() => _justCopied = true);
+        Future<void>.delayed(_flash, () {
+          if (mounted) setState(() => _justCopied = false);
+        });
+      },
     );
   }
 }

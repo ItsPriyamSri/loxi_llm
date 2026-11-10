@@ -10,6 +10,7 @@ import 'core/logging/model_io_logger.dart';
 import 'core/providers/objectbox_provider.dart';
 import 'core/providers/shared_preferences_provider.dart';
 import 'core/router/app_router.dart';
+import 'core/theme/prism_relay.dart';
 
 void main() async {
   // Run inside a guarded zone so uncaught async errors reach AppLogger.
@@ -67,15 +68,8 @@ class MyApp extends ConsumerWidget {
       routerConfig: router,
       title: 'Loki LLM',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        useMaterial3: true,
-        // Use the classic ripple instead of the default Material 3 InkSparkle,
-        // which relies on shaders/ink_sparkle.frag — a fragment shader that
-        // fails to decode in the Flutter 3.41.0 test environment (and has had
-        // load issues on some devices). Visually near-identical.
-        splashFactory: InkRipple.splashFactory,
-      ),
+      theme: PrismRelay.light,
+      themeMode: ThemeMode.light,
     );
   }
 }

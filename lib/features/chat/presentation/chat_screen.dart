@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/platform/haptics.dart';
 import '../../../core/providers/inference_provider.dart';
+import '../../../core/theme/prism_relay.dart';
+import '../../../core/widgets/prism_art.dart';
+import '../../../core/widgets/prism_hero.dart';
+import '../../../core/widgets/prism_icon.dart';
 import '../../models/presentation/models_notifier.dart';
 import 'conversation_list_notifier.dart';
 import 'widgets/chat_markdown_text.dart';
@@ -26,10 +31,33 @@ String _timeAgo(int updatedAtMs, DateTime now) {
   if (delta.inDays < 1) return '${delta.inHours}h ago';
   if (delta.inDays < 7) return '${delta.inDays}d ago';
   const months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
   ];
   return '${then.day} ${months[then.month - 1]}';
+}
+
+String _sectionFor(int updatedAtMs, [DateTime? now]) {
+  final then = DateTime.fromMillisecondsSinceEpoch(updatedAtMs);
+  final today = now ?? DateTime.now();
+  final todayDate = DateTime(today.year, today.month, today.day);
+  final thenDate = DateTime(then.year, then.month, then.day);
+  final days = todayDate.difference(thenDate).inDays;
+  if (days <= 0) return 'Today';
+  if (days == 1) return 'Yesterday';
+  if (days < 7) return 'This week';
+  if (days < 30) return 'This month';
+  return 'Earlier';
 }
 
 class ChatScreen extends ConsumerWidget {
@@ -39,29 +67,36 @@ class ChatScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final backendAsync = ref.watch(inferenceNotifierProvider);
 
-    return backendAsync.when(
-      loading: () => Scaffold(
-        appBar: AppBar(title: const Text('Chat')),
-        body: const Center(child: CircularProgressIndicator()),
+    if (backendAsync.asData?.value != null) {
+      return const _ConversationListView();
+    }
+    final pending = backendAsync.isLoading;
+    final failed = backendAsync.hasError;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Chat')),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+        children: [
+          PrismHero(
+            title: pending
+                ? 'Loading model…'
+                : failed
+                    ? 'Could not load model'
+                    : 'Load a model to chat',
+            tint: failed ? PrismRelay.blush : PrismRelay.lilacSoft,
+            artwork: PrismArtwork.chat,
+            progress: pending && !MediaQuery.disableAnimationsOf(context)
+                ? const LinearProgressIndicator()
+                : null,
+            action: pending
+                ? null
+                : FilledButton(
+                    onPressed: () => context.go('/models'),
+                    child: const Text('Open Models'),
+                  ),
+          ),
+        ],
       ),
-      error: (e, _) => Scaffold(
-        appBar: AppBar(title: const Text('Chat')),
-        body: Center(child: Text('Engine error: $e')),
-      ),
-      data: (backend) => backend == null
-          ? Scaffold(
-              appBar: AppBar(
-                backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-                title: const Text('Chat'),
-              ),
-              body: const Center(
-                child: Text(
-                  'Load a model from the Models tab\nto start chatting.',
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            )
-          : const _ConversationListView(),
     );
   }
 }
@@ -81,46 +116,94 @@ class _ConversationListView extends ConsumerWidget {
           in ref.watch(modelsNotifierProvider).valueOrNull ?? const [])
         model.id: model.name,
     };
-    final colorScheme = Theme.of(context).colorScheme;
 
     void startNewConversation() {
+      Haptics.commit();
       final id = notifier.createConversation(modelId: loadedModel?.id ?? '');
       context.go('/chat/$id');
     }
 
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: colorScheme.inversePrimary,
-        title: const Text('Conversations'),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        icon: const Icon(Icons.add),
-        label: const Text('New Chat'),
-        onPressed: startNewConversation,
+        title: const Text('Chat'),
+        actions: [
+          if (conversationsAsync.valueOrNull?.isNotEmpty == true)
+            Padding(
+              padding: const EdgeInsetsDirectional.only(end: 12),
+              child: FilledButton.icon(
+                icon: const PrismIcon(PrismGlyph.plus),
+                label: const Text('New Chat'),
+                onPressed: startNewConversation,
+              ),
+            ),
+        ],
       ),
       body: conversationsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error: $e')),
+        error: (e, _) => Center(
+          child: TextButton(
+            onPressed: () => ref.invalidate(conversationListNotifierProvider),
+            child: const Text('Could not load chats. Try again'),
+          ),
+        ),
         data: (conversations) {
           if (conversations.isEmpty) {
             return _EmptyChats(onStart: startNewConversation);
           }
+          final sorted = [...conversations]
+            ..sort((a, b) => b.updatedAtMs.compareTo(a.updatedAtMs));
           return ListView.builder(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 88),
-            itemCount: conversations.length,
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
+            itemCount: sorted.length,
             itemBuilder: (context, index) {
-              final conv = conversations[index];
+              final conv = sorted[index];
               final storedId = conv.modelId;
               final modelName =
                   storedId.isEmpty ? '' : (modelNames[storedId] ?? storedId);
-              return _ConversationCard(
-                title: conv.title,
-                subtitle: conversationMeta(
-                  modelName: modelName,
-                  updatedAtMs: conv.updatedAtMs,
-                ),
-                onTap: () => context.go('/chat/${conv.id}'),
-                onDelete: () => notifier.deleteConversation(conv.id),
+              final section = _sectionFor(conv.updatedAtMs);
+              final showsHeader =
+                  index == 0 || _sectionFor(sorted[index - 1].updatedAtMs) != section;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (showsHeader) _SectionHeader(section),
+                  _ConversationRow(
+                    title: conv.title,
+                    subtitle: conversationMeta(
+                      modelName: modelName,
+                      updatedAtMs: conv.updatedAtMs,
+                    ),
+                    showDivider: index != sorted.length - 1 &&
+                        _sectionFor(sorted[index + 1].updatedAtMs) == section,
+                    onTap: () {
+                      Haptics.selection();
+                      context.go('/chat/${conv.id}');
+                    },
+                    onDelete: () async {
+                      final confirmed = await showDialog<bool>(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: const Text('Delete conversation?'),
+                          content: Text(conv.title),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, false),
+                              child: const Text('Cancel'),
+                            ),
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, true),
+                              child: const Text('Delete'),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (confirmed == true && context.mounted) {
+                        Haptics.tap();
+                        notifier.deleteConversation(conv.id);
+                      }
+                    },
+                  ),
+                ],
               );
             },
           );
@@ -137,90 +220,172 @@ class _EmptyChats extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.chat_bubble_outline, size: 48, color: colorScheme.outline),
-            const SizedBox(height: 12),
-            Text('No chats yet', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 4),
-            Text(
-              'Start one with the model you have loaded.',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
+    final type = Theme.of(context).textTheme;
+    return ListView(
+      padding: const EdgeInsets.only(top: 44),
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: PrismRelay.lilacSoft,
+                    borderRadius: BorderRadius.circular(20),
                   ),
-            ),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              icon: const Icon(Icons.add),
-              label: const Text('Start New Chat'),
-              onPressed: onStart,
-            ),
-          ],
+                  child: const SizedBox.square(
+                    dimension: 72,
+                    child: PrismIcon(PrismGlyph.chat,
+                        size: 30, color: PrismRelay.plum),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Center(
+                child: Text('No chats yet', style: type.headlineSmall),
+              ),
+              const SizedBox(height: 6),
+              Center(
+                child: Text(
+                  'Everything stays on this device — your chats never leave it.',
+                  textAlign: TextAlign.center,
+                  style: type.bodyMedium?.copyWith(color: PrismRelay.inkMuted),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Center(
+                child: FilledButton.icon(
+                  icon: const PrismIcon(PrismGlyph.plus, size: 18),
+                  label: const Text('New Chat'),
+                  onPressed: onStart,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(6, 18, 6, 6),
+      child: Semantics(
+        header: true,
+        child: Text(
+          label.toUpperCase(),
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: PrismRelay.inkMuted,
+                fontSize: 11,
+                letterSpacing: 1.4,
+                fontWeight: FontWeight.w700,
+              ),
         ),
       ),
     );
   }
 }
 
-class _ConversationCard extends StatelessWidget {
-  const _ConversationCard({
+class _ConversationRow extends StatelessWidget {
+  const _ConversationRow({
     required this.title,
     required this.subtitle,
     required this.onTap,
     required this.onDelete,
+    this.showDivider = true,
   });
 
   final String title;
   final String subtitle;
   final VoidCallback onTap;
   final VoidCallback onDelete;
+  final bool showDivider;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      elevation: 0,
-      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: ListTile(
-        contentPadding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
-        leading: CircleAvatar(
-          backgroundColor: colorScheme.primaryContainer,
-          child: Icon(
-            Icons.chat_bubble_outline,
-            size: 20,
-            color: colorScheme.onPrimaryContainer,
+    return Column(
+      children: [
+        InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(6, 10, 2, 10),
+            child: Row(
+              children: [
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: PrismRelay.lilacSoft,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: SizedBox.square(
+                    dimension: 38,
+                    child: PrismIcon(
+                      PrismGlyph.chat,
+                      size: 18,
+                      color: PrismRelay.plum,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ChatMarkdownText(
+                        title,
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleSmall
+                            ?.copyWith(letterSpacing: -0.1),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        inlineOnly: true,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodySmall
+                            ?.copyWith(
+                              color: colorScheme.onSurfaceVariant,
+                              fontSize: 12.5,
+                            ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const PrismIcon(PrismGlyph.trash,
+                      size: 19, color: PrismRelay.inkMuted),
+                  tooltip: 'Delete chat',
+                  onPressed: onDelete,
+                ),
+              ],
+            ),
           ),
         ),
-        title: ChatMarkdownText(
-          title,
-          style: Theme.of(context).textTheme.titleMedium,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          inlineOnly: true,
-        ),
-        subtitle: Text(
-          subtitle,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
-        ),
-        trailing: IconButton(
-          icon: const Icon(Icons.delete_outline),
-          tooltip: 'Delete chat',
-          onPressed: onDelete,
-        ),
-        onTap: onTap,
-      ),
+        if (showDivider)
+          const Divider(
+            height: 1,
+            indent: 56,
+            endIndent: 0,
+            color: PrismRelay.line,
+          ),
+      ],
     );
   }
 }

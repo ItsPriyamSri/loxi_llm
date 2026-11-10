@@ -2,6 +2,9 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../../../../core/theme/prism_relay.dart';
+import '../../../../core/widgets/prism_icon.dart';
+
 /// Rounded file thumbnail for chat bubbles and the composer preview.
 class ImageAttachmentThumbnail extends StatelessWidget {
   const ImageAttachmentThumbnail({
@@ -33,9 +36,9 @@ class ImageAttachmentThumbnail extends StatelessWidget {
           height: size,
           color: colors.surfaceContainerHighest,
           alignment: Alignment.center,
-          child: Icon(
-            Icons.broken_image_outlined,
-            color: colors.onSurfaceVariant,
+          child: const PrismIcon(
+            PrismGlyph.brokenImage,
+            color: PrismRelay.inkSecondary,
           ),
         ),
       ),

@@ -4,12 +4,17 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../../core/engine/inference_backend.dart';
 import '../../../core/providers/download_provider.dart';
 import '../../../core/providers/inference_provider.dart';
 import '../../../core/providers/tts_provider.dart';
 import '../../../core/services/tts_service.dart';
+import '../../../core/services/file_storage_service.dart';
+import '../../../core/platform/haptics.dart';
+import '../../../core/theme/prism_relay.dart';
+import '../../../core/widgets/prism_icon.dart';
 import '../../agent/agent_model_support.dart';
 import '../../models/domain/model.dart';
 import '../../settings/presentation/prompt_library_screen.dart';
@@ -84,6 +89,13 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
 
   /// Read in initState. [dispose] cannot use `ref`.
   late final TtsService _tts;
+  late final FileStorageService _storage;
+  bool _following = true;
+  bool _newerBelow = false;
+  bool _submitting = false;
+  bool _stopRequested = false;
+  bool _pickingImage = false;
+  String? _sendError;
 
   /// Path to an image attached to the message being composed, if any. Copied
   /// into app storage so it survives independently of the picker's temp file.
@@ -95,6 +107,8 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
     _textController = TextEditingController();
     _scrollController = ScrollController();
     _tts = ref.read(ttsServiceProvider);
+    _storage = ref.read(fileStorageServiceProvider);
+    _scrollToBottom();
   }
 
   @override
@@ -105,24 +119,42 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
     if (_attachedImagePath != null) {
       // Fire-and-forget: dispose() can't be async. An unsent attachment
       // shouldn't outlive the screen it was picked on.
-      ref.read(fileStorageServiceProvider).deleteImage(_attachedImagePath!);
+      _storage.deleteImage(_attachedImagePath!);
     }
     super.dispose(); // MUST be last
   }
 
+  bool _onScroll(ScrollNotification event) {
+    if (event.depth != 0) return false;
+    final isUserScroll = event is UserScrollNotification ||
+        (event is ScrollUpdateNotification && event.dragDetails != null);
+    if (isUserScroll) {
+      final atLatest = event.metrics.extentAfter <= 56;
+      if (_following != atLatest || (atLatest && _newerBelow)) {
+        setState(() {
+          _following = atLatest;
+          if (atLatest) _newerBelow = false;
+        });
+      }
+    }
+    return false;
+  }
+
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-        );
-      }
+      if (!mounted || !_following || !_scrollController.hasClients) return;
+      final position = _scrollController.position;
+      if (position.extentAfter <= 1) return;
+      _scrollController.jumpTo(position.maxScrollExtent);
     });
   }
 
   Future<void> _sendMessage() async {
+    Haptics.commit();
+    if (_submitting ||
+        ref.read(inferenceNotifierProvider).asData?.value == null) {
+      return;
+    }
     final rawText = _textController.text;
     final text = rawText.trim();
     final imagePath = _attachedImagePath;
@@ -144,7 +176,13 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
     // already went through, so putting the text/attachment back would risk
     // a near-duplicate resend. See [shouldRestoreComposerAfterSendError].
     _textController.clear();
-    setState(() => _attachedImagePath = null);
+    setState(() {
+      _attachedImagePath = null;
+      _submitting = true;
+      _following = true;
+      _newerBelow = false;
+      _sendError = null;
+    });
     try {
       await ref
           .read(chatNotifierProvider(widget.conversationId).notifier)
@@ -163,16 +201,19 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
         // above — nothing to retry, just scroll to it.
         _scrollToBottom();
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(shouldRestore ? 'Error: $e' : 'Message sent, but: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      setState(() {
+        _sendError = shouldRestore
+            ? 'Could not send the message. Your draft is still here.'
+            : 'Message saved, but the reply could not start.';
+      });
+    } finally {
+      if (mounted) setState(() => _submitting = false);
     }
   }
 
   Future<void> _pickImage() async {
+    if (_pickingImage) return;
+    setState(() => _pickingImage = true);
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.image,
@@ -181,7 +222,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
       final picked = result?.files.single;
       if (picked?.path == null || !mounted) return;
 
-      final storage = ref.read(fileStorageServiceProvider);
+      final storage = _storage;
       final filename =
           'img-${DateTime.now().millisecondsSinceEpoch}${_extensionOf(picked!)}';
       final destPath = await storage.getImagePath(filename);
@@ -189,14 +230,28 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
 
       // Replace any previously attached (unsent) image so it doesn't leak.
       final previous = _attachedImagePath;
-      if (mounted) setState(() => _attachedImagePath = destPath);
+      if (!mounted) {
+        await storage.deleteImage(destPath);
+        return;
+      }
+      if (!stillAllowsAttachment(
+        ref.read(inferenceNotifierProvider),
+        ref.read(inferenceNotifierProvider.notifier).loadedModel,
+      )) {
+        await storage.deleteImage(destPath);
+        _showSnack('The selected model does not support images.');
+        return;
+      }
+      setState(() => _attachedImagePath = destPath);
       if (previous != null) await storage.deleteImage(previous);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not attach image: $e')),
+          const SnackBar(content: Text('Could not attach image.')),
         );
       }
+    } finally {
+      if (mounted) setState(() => _pickingImage = false);
     }
   }
 
@@ -214,16 +269,16 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
   void _removeAttachedImage() {
     final stale = _attachedImagePath;
     setState(() => _attachedImagePath = null);
-    if (stale != null) ref.read(fileStorageServiceProvider).deleteImage(stale);
+    if (stale != null) _storage.deleteImage(stale);
   }
 
-  void _editSystemPrompt() {
+  Future<void> _editSystemPrompt() async {
     final conversation =
         ref.read(conversationRepositoryProvider).getById(widget.conversationId);
     if (conversation == null) return;
 
     final controller = TextEditingController(text: conversation.systemPrompt);
-    showDialog<void>(
+    final route = DialogRoute<void>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) {
@@ -242,7 +297,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                       controller: controller,
                       maxLines: 5,
                       decoration: const InputDecoration(
-                        hintText: 'Enter system prompt (optional)',
+                        labelText: 'System prompt',
                         border: OutlineInputBorder(),
                       ),
                     ),
@@ -289,7 +344,6 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                         controller.text,
                       );
                   Navigator.of(ctx).pop();
-                  controller.dispose();
                 },
                 child: const Text('Save'),
               ),
@@ -298,14 +352,16 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
         },
       ),
     );
+    await Navigator.of(context, rootNavigator: true).push(route);
+    await route.completed;
+    controller.dispose();
   }
 
   Future<void> _savePromptToLibrary(String body) async {
     final taken = ref.read(settingsNotifierProvider.notifier).savedPrompts();
     final name = await askPromptName(
       context,
-      nameTaken: (candidate) =>
-          taken.any((prompt) => prompt.name == candidate),
+      nameTaken: (candidate) => taken.any((prompt) => prompt.name == candidate),
     );
     if (!mounted || name == null) return;
     ref.read(settingsNotifierProvider.notifier).savePrompt(name, body);
@@ -366,6 +422,22 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
     await _tts.stop();
   }
 
+  Future<void> _stopGeneration() async {
+    Haptics.tap();
+    if (_stopRequested) return;
+    setState(() => _stopRequested = true);
+    try {
+      await Future.wait([
+        ref.read(chatNotifierProvider(widget.conversationId).notifier).stop(),
+        if (_speakingMessageId != null) _stopReadAloud(),
+      ]);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _stopRequested = false);
+      _showSnack('Could not stop generation.');
+    }
+  }
+
   Future<void> _toggleReadAloud(Message message) async {
     final tts = _tts;
     if (!tts.isSupported) {
@@ -406,540 +478,631 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
     }
   }
 
+  Widget _shortcuts({required bool centered}) {
+    const shortcuts = [
+      ('Translate', 'Translate the following to English:\n'),
+      ('Refine', 'Refine and improve the following text:\n'),
+      ('Summarize', 'Summarize the following in 3 bullet points:\n'),
+      ('Explain', 'Explain the following in simple terms:\n'),
+    ];
+    final actions = [
+      for (final (label, prompt) in shortcuts)
+        ActionChip(
+          label: Text(label),
+          onPressed: () {
+            _textController.value = TextEditingValue(
+              text: prompt,
+              selection: TextSelection.collapsed(offset: prompt.length),
+            );
+          },
+        ),
+    ];
+    if (centered) {
+      return Wrap(
+        key: const ValueKey('centered-shortcuts'),
+        alignment: WrapAlignment.center,
+        spacing: 8,
+        runSpacing: 4,
+        children: actions,
+      );
+    }
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Row(spacing: 8, children: actions),
+    );
+  }
+
+  void _openModels() {
+    final shell = StatefulNavigationShell.maybeOf(context);
+    if (shell != null) {
+      shell.goBranch(0);
+    } else {
+      GoRouter.maybeOf(context)?.go('/models');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final chatAsync = ref.watch(chatNotifierProvider(widget.conversationId));
+    final chatProvider = chatNotifierProvider(widget.conversationId);
+    final chatAsync = ref.watch(chatProvider);
     final backendAsync = ref.watch(inferenceNotifierProvider);
-    final conversation = ref
-        .watch(conversationRepositoryProvider)
-        .getById(widget.conversationId);
-    final conversations =
-        ref.watch(conversationListNotifierProvider).valueOrNull ?? [];
-    final currentConv =
-        conversations.where((c) => c.id == widget.conversationId).firstOrNull;
-    final isRagEnabled = currentConv?.ragEnabled ?? false;
-    final isToolsEnabled = currentConv?.toolsEnabled ?? false;
+    final repository = ref.watch(conversationRepositoryProvider);
+    final conversations = ref.watch(conversationListNotifierProvider);
+    final conversation = conversations.valueOrNull
+            ?.where((item) => item.id == widget.conversationId)
+            .firstOrNull ??
+        repository.getById(widget.conversationId);
+    final canNavigate = GoRouter.maybeOf(context) != null;
+    if (conversation == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Conversation')),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('This conversation is no longer available.'),
+              if (canNavigate)
+                TextButton(
+                    onPressed: () => context.go('/chat'),
+                    child: const Text('Back to chats')),
+            ],
+          ),
+        ),
+      );
+    }
+
     final loadedModel =
-        ref.watch(inferenceNotifierProvider.notifier).loadedModel;
-    final agentCapable = isAgentCapableModel(loadedModel?.id);
-    // Catalog data (isMultimodalModel) only says the model *should* support
-    // vision; backend.supportsVision is the native-verified layer (the mmproj
-    // actually loaded and reported vision support) — both must hold before
-    // the attach button appears.
+        ref.read(inferenceNotifierProvider.notifier).loadedModel;
+    final backend = backendAsync.asData?.value;
+    final ready = backend != null;
+    final agentCapable = ready && isAgentCapableModel(loadedModel?.id);
     final canAttachImage = loadedModel != null &&
         isMultimodalModel(loadedModel) &&
-        (backendAsync.valueOrNull?.supportsVision ?? false);
-
-    final isModelLoaded = backendAsync.valueOrNull != null;
-    final isStreaming = chatAsync.valueOrNull?.isStreaming ?? false;
+        (backend?.supportsVision ?? false);
+    final chat = chatAsync.valueOrNull;
+    final messages = chat?.messages ?? const <Message>[];
+    final streamingText = chat?.streamingText;
+    final isStreaming = chat?.isStreaming ?? false;
+    final blank = chat != null && messages.isEmpty && !isStreaming;
     ref.watch(settingsNotifierProvider);
     final savedPrompts =
         ref.read(settingsNotifierProvider.notifier).savedPrompts();
-    final exportConversation = conversation ?? currentConv;
+    final prompts = savedPrompts.take(6).toList();
+    final modeActions = ref.read(conversationListNotifierProvider.notifier);
+    final theme = Theme.of(context);
 
-    // The chat tab is kept alive in an IndexedStack, so switching to a
-    // non-vision model doesn't dispose this screen — drop any pending
-    // attachment rather than let it silently ride along on the next send.
-    // Only a path the composer still owns is deleted here: once send() has
-    // handed a path off (see _sendMessage), _attachedImagePath is already
-    // null, so an in-flight send's already-persisted image is untouched.
     ref.listen(inferenceNotifierProvider, (previous, next) {
       final model = ref.read(inferenceNotifierProvider.notifier).loadedModel;
-      if (stillAllowsAttachment(next, model) || _attachedImagePath == null) {
+      if (!stillAllowsAttachment(next, model) && _attachedImagePath != null) {
+        _removeAttachedImage();
+        _showSnack('Image removed. The selected model does not support it.');
+      }
+    });
+    ref.listen(chatProvider, (previous, next) {
+      final before = previous?.valueOrNull;
+      final after = next.valueOrNull;
+      if (after == null ||
+          (before?.messages.length == after.messages.length &&
+              before?.streamingText == after.streamingText)) {
         return;
       }
-      final stale = _attachedImagePath!;
-      setState(() => _attachedImagePath = null);
-      ref.read(fileStorageServiceProvider).deleteImage(stale);
-    });
-
-    // A failed generation leaves the chat usable (see failedGenerationState);
-    // tell the user once. The next send() starts with no error, so a repeat
-    // failure is shown again.
-    ref.listen(chatNotifierProvider(widget.conversationId), (previous, next) {
-      final error = next.valueOrNull?.error;
-      if (error != null && error != previous?.valueOrNull?.error) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(error), backgroundColor: Colors.red),
-        );
+      if (_stopRequested && before?.isStreaming == true && !after.isStreaming) {
+        setState(() => _stopRequested = false);
+        if (after.error == null) _showSnack('Generation stopped');
+      }
+      if (_following) {
+        _scrollToBottom();
+      } else {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || _following || !_scrollController.hasClients) return;
+          final below = _scrollController.position.extentAfter > 56;
+          if (_newerBelow != below) setState(() => _newerBelow = below);
+        });
       }
     });
 
+    final error = _sendError ?? chat?.error;
+    final showJump = !_following && _newerBelow;
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        title: ChatMarkdownText(
-          conversation?.title ?? 'Chat',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          inlineOnly: true,
+        toolbarHeight:
+            MediaQuery.textScalerOf(context).scale(16) > 23 ? 80 : 60,
+        leading: Navigator.canPop(context) ? const BackButton() : null,
+        titleSpacing: 0,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ChatMarkdownText(
+              conversation.title,
+              style: theme.textTheme.titleSmall,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              inlineOnly: true,
+            ),
+            if (ready && loadedModel != null)
+              Text(
+                loadedModel.name,
+                style: theme.textTheme.bodySmall,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+          ],
         ),
         actions: [
-          if (exportConversation != null)
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.ios_share_outlined),
-              tooltip: 'Export conversation',
-              onSelected: (value) {
-                final messages =
-                    chatAsync.valueOrNull?.messages ?? const <Message>[];
-                switch (value) {
-                  case 'share':
-                    _shareConversation(exportConversation, messages);
-                  case 'copy':
-                    _copyConversation(exportConversation, messages);
-                }
-              },
-              itemBuilder: (context) => const [
-                PopupMenuItem(
-                  value: 'share',
-                  child: ListTile(
-                    leading: Icon(Icons.share_outlined),
-                    title: Text('Share as Markdown'),
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'copy',
-                  child: ListTile(
-                    leading: Icon(Icons.copy_all_outlined),
-                    title: Text('Copy conversation'),
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                ),
-              ],
-            ),
           IconButton(
-            icon: Icon(
-              isRagEnabled ? Icons.auto_awesome : Icons.auto_awesome_outlined,
-              color:
-                  isRagEnabled ? Theme.of(context).colorScheme.primary : null,
-            ),
-            tooltip: isRagEnabled
-                ? 'RAG mode on — tap to disable'
-                : 'RAG mode off — tap to enable',
-            onPressed: () => ref
-                .read(conversationListNotifierProvider.notifier)
-                .toggleRagEnabled(widget.conversationId),
-          ),
-          IconButton(
-            icon: Icon(
-              isToolsEnabled ? Icons.build : Icons.build_outlined,
-              color: isToolsEnabled && agentCapable
-                  ? Theme.of(context).colorScheme.primary
-                  : null,
-            ),
-            tooltip: !agentCapable
-                ? 'Tools require Phi-3 or Llama 3.2 3B (load a larger model)'
-                : isToolsEnabled
-                    ? 'Tools on — tap to disable'
-                    : 'Tools off — tap to enable',
-            onPressed: !agentCapable
-                ? () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          'Tool mode requires Phi-3 Mini or Llama 3.2 3B. '
-                          'Load a larger model from the Models tab.',
-                        ),
-                      ),
-                    );
-                  }
-                : () => ref
-                    .read(conversationListNotifierProvider.notifier)
-                    .toggleToolsEnabled(widget.conversationId),
-          ),
-          IconButton(
-            icon: const Icon(Icons.settings_outlined),
             tooltip: 'System prompt',
+            icon: const PrismIcon(PrismGlyph.book),
             onPressed: _editSystemPrompt,
+          ),
+          PopupMenuButton<String>(
+            icon: const PrismIcon(PrismGlyph.more),
+            tooltip: 'Export conversation',
+            onSelected: (value) {
+              if (value == 'share') {
+                _shareConversation(conversation, messages);
+              } else {
+                _copyConversation(conversation, messages);
+              }
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(value: 'share', child: Text('Share as Markdown')),
+              PopupMenuItem(value: 'copy', child: Text('Copy conversation')),
+            ],
           ),
         ],
       ),
-      body: Column(
-        children: [
-          // Model status banner
-          if (isModelLoaded && loadedModel != null)
-            MaterialBanner(
-              content: Text('Using ${loadedModel.name}'),
-              leading: const Icon(Icons.memory_outlined),
-              actions: [
-                TextButton(
-                  onPressed: () =>
-                      ScaffoldMessenger.of(context).hideCurrentMaterialBanner(),
-                  child: const Text('Dismiss'),
+      body: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: RadialGradient(
+            center: Alignment(-.85, -.75),
+            radius: 1.05,
+            colors: [PrismRelay.atmosphere, PrismRelay.canvas],
+          ),
+        ),
+        child: LayoutBuilder(
+          builder: (context, viewport) => Column(
+            children: [
+              if (!ready)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+                  child: Card(
+                    color: backendAsync.hasError
+                        ? PrismRelay.blush
+                        : PrismRelay.peachSurface,
+                    child: ListTile(
+                      title: Text(backendAsync.isLoading
+                          ? 'Loading model…'
+                          : backendAsync.hasError
+                              ? 'Could not load model'
+                              : 'No model loaded'),
+                      trailing: canNavigate && !backendAsync.isLoading
+                          ? TextButton(
+                              onPressed: _openModels,
+                              child: const Text('Models'))
+                          : null,
+                    ),
+                  ),
                 ),
-              ],
-            )
-          else if (!isModelLoaded)
-            MaterialBanner(
-              content: const Text('No model loaded. Go to the Models tab.'),
-              leading: const Icon(Icons.warning_amber_outlined),
-              actions: [
-                TextButton(
-                  onPressed: () =>
-                      ScaffoldMessenger.of(context).hideCurrentMaterialBanner(),
-                  child: const Text('Dismiss'),
-                ),
-              ],
-            ),
-
-          // Message list
-          Expanded(
-            child: chatAsync.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(child: Text('Error: $e')),
-              data: (chatState) {
-                final messages = chatState.messages;
-                final streamingText = chatState.streamingText;
-
-                // Auto-scroll when messages change
-                if (messages.isNotEmpty || streamingText != null) {
-                  _scrollToBottom();
-                }
-
-                final choices = savedPrompts.take(6).toList();
-                if (messages.isEmpty &&
-                    streamingText == null &&
-                    (conversation?.systemPrompt ?? '').isEmpty &&
-                    choices.isNotEmpty) {
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            'Start with a saved prompt',
-                            style: Theme.of(context).textTheme.titleMedium,
+              Expanded(
+                child: chatAsync.when(
+                  loading: () =>
+                      const Center(child: CircularProgressIndicator()),
+                  error: (e, _) => Center(
+                    child: TextButton(
+                      onPressed: () => ref.invalidate(chatProvider),
+                      child: const Text('Could not open messages. Try again'),
+                    ),
+                  ),
+                  data: (chatState) {
+                    if (blank) {
+                      final showPrompts = conversation.systemPrompt.isEmpty &&
+                          prompts.isNotEmpty;
+                      return Center(
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.all(20),
+                          child: AnimatedSwitcher(
+                            duration: MediaQuery.disableAnimationsOf(context)
+                                ? Duration.zero
+                                : PrismRelay.motion,
+                            child: showPrompts
+                                ? Column(
+                                    key: const ValueKey('saved-prompts'),
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text('Start with a saved prompt',
+                                          style: theme.textTheme.titleMedium),
+                                      const SizedBox(height: 10),
+                                      Wrap(
+                                        alignment: WrapAlignment.center,
+                                        spacing: 8,
+                                        runSpacing: 4,
+                                        children: [
+                                          for (final prompt in prompts)
+                                            ActionChip(
+                                              label: Text(prompt.name),
+                                              onPressed: () => modeActions
+                                                  .updateSystemPrompt(
+                                                      widget.conversationId,
+                                                      prompt.body),
+                                            ),
+                                        ],
+                                      ),
+                                      TextButton(
+                                          onPressed: _editSystemPrompt,
+                                          child: const Text('More')),
+                                    ],
+                                  )
+                                : _shortcuts(centered: true),
                           ),
-                          const SizedBox(height: 12),
-                          for (var start = 0;
-                              start < choices.length;
-                              start += 3)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 8),
-                              child: Row(
-                                children: [
-                                  for (var column = 0; column < 3; column++)
-                                    Expanded(
-                                      child: start + column < choices.length
-                                          ? Padding(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                horizontal: 4,
-                                              ),
-                                              child: LayoutBuilder(
-                                                builder:
-                                                    (context, constraints) {
-                                                  final prompt =
-                                                      choices[start + column];
-                                                  return ActionChip(
-                                                    label: ConstrainedBox(
-                                                      constraints:
-                                                          BoxConstraints(
-                                                        maxWidth: constraints
-                                                                    .maxWidth <
-                                                                24
-                                                            ? 0
-                                                            : constraints
-                                                                    .maxWidth -
-                                                                24,
-                                                      ),
-                                                      child: Text(
-                                                        prompt.name,
-                                                        maxLines: 1,
-                                                        overflow: TextOverflow
-                                                            .ellipsis,
-                                                        textAlign:
-                                                            TextAlign.center,
-                                                      ),
-                                                    ),
-                                                    onPressed: () => ref
-                                                        .read(
-                                                            conversationListNotifierProvider
-                                                                .notifier)
-                                                        .updateSystemPrompt(
-                                                          widget.conversationId,
-                                                          prompt.body,
-                                                        ),
-                                                  );
-                                                },
-                                              ),
-                                            )
-                                          : const SizedBox.shrink(),
-                                    ),
-                                ],
-                              ),
+                        ),
+                      );
+                    }
+                    return NotificationListener<ScrollNotification>(
+                      onNotification: _onScroll,
+                      child: ListView.builder(
+                        controller: _scrollController,
+                        padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                        itemCount:
+                            messages.length + (streamingText == null ? 0 : 1),
+                        itemBuilder: (context, index) {
+                          if (index == messages.length) {
+                            final text = streamingText!;
+                            return MessageBubble(
+                              content: text,
+                              isUser: false,
+                              isStreaming: true,
+                              child: text.isEmpty
+                                  ? Semantics(
+                                      liveRegion: true,
+                                      child: const Text(
+                                          'Thinking…'),
+                                    )
+                                  : null,
+                            );
+                          }
+                          final message = messages[index];
+                          final hasText = message.content.trim().isNotEmpty;
+                          final stats = replyStats(
+                            tokenCount: message.tokenCount,
+                            totalDurationMs: message.totalDurationMs,
+                            timeToFirstTokenMs: message.timeToFirstTokenMs,
+                            replyWaitMs: message.replyWaitMs,
+                          );
+                          return MessageBubble(
+                            content: message.content,
+                            imagePath: message.imagePath,
+                            isUser: message.role == MessageRole.user,
+                            isStreaming: false,
+                            onCopy: hasText
+                                ? () => _copyText(message.content,
+                                    confirmation: 'Message copied')
+                                : null,
+                            onReadAloud:
+                                hasText && message.role == MessageRole.assistant
+                                    ? () => _toggleReadAloud(message)
+                                    : null,
+                            onStopReadAloud: _speakingMessageId == message.id
+                                ? _stopReadAloud
+                                : null,
+                            isSpeaking: _speakingMessageId == message.id &&
+                                !_readAloudPaused,
+                            isPaused: _speakingMessageId == message.id &&
+                                _readAloudPaused,
+                            speedLabel: stats?.speed,
+                            timeLabel: stats?.time,
+                            child: !hasText &&
+                                    message.role == MessageRole.assistant
+                                ? const Text('No reply generated')
+                                : null,
+                          );
+                        },
+                      ),
+                    );
+                  },
+                ),
+              ),
+              if (showJump)
+                TextButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      _following = true;
+                      _newerBelow = false;
+                    });
+                    _scrollToBottom();
+                  },
+                  icon: const PrismIcon(PrismGlyph.down, size: 18),
+                  label: const Text('Jump to latest'),
+                ),
+              if (error != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Semantics(
+                    liveRegion: true,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: PrismRelay.blush,
+                        borderRadius: BorderRadius.circular(16),
+                        border:
+                            Border.all(color: const Color(0xFFF3C4C4)),
+                      ),
+                      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                      child: Row(
+                        children: [
+                          const PrismIcon(PrismGlyph.warn,
+                              size: 20, color: PrismRelay.errorInk),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              error,
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
+                              style:
+                                  Theme.of(context).textTheme.bodySmall?.copyWith(
+                                        color: PrismRelay.errorInk,
+                                        fontSize: 13,
+                                      ),
                             ),
-                          TextButton(
-                            onPressed: _editSystemPrompt,
-                            child: const Text('More'),
                           ),
                         ],
                       ),
                     ),
-                  );
-                }
-
-                return ListView.builder(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.all(16),
-                  itemCount: messages.length + (streamingText != null ? 1 : 0),
-                  itemBuilder: (context, index) {
-                    // Streaming bubble at end
-                    if (index == messages.length && streamingText != null) {
-                      // Before the first token arrives, show an animated
-                      // "thinking" indicator so the user knows the model is
-                      // working (time-to-first-token can be significant).
-                      if (streamingText.isEmpty) {
-                        return MessageBubble(
-                          isUser: false,
-                          isStreaming: true,
-                          child: _TypingIndicator(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSecondaryContainer,
-                          ),
-                        );
-                      }
-                      return MessageBubble(
-                        content: streamingText,
-                        isUser: false,
-                        isStreaming: true,
-                      );
-                    }
-                    final msg = messages[index];
-                    final stats = replyStats(
-                      tokenCount: msg.tokenCount,
-                      totalDurationMs: msg.totalDurationMs,
-                      timeToFirstTokenMs: msg.timeToFirstTokenMs,
-                      replyWaitMs: msg.replyWaitMs,
-                    );
-                    return MessageBubble(
-                      content: msg.content,
-                      imagePath: msg.imagePath,
-                      isUser: msg.role == MessageRole.user,
-                      isStreaming: false,
-                      onCopy: () => _copyText(
-                        msg.content,
-                        confirmation: 'Message copied',
-                      ),
-                      onReadAloud: msg.role == MessageRole.assistant
-                          ? () => _toggleReadAloud(msg)
-                          : null,
-                      onStopReadAloud:
-                          _speakingMessageId == msg.id ? _stopReadAloud : null,
-                      isSpeaking:
-                          _speakingMessageId == msg.id && !_readAloudPaused,
-                      isPaused:
-                          _speakingMessageId == msg.id && _readAloudPaused,
-                      speedLabel: stats?.speed,
-                      timeLabel: stats?.time,
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-
-          // Quick task shortcut chips
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            child: Row(
-              children: [
-                for (final entry in const [
-                  ('Translate', 'Translate the following to English:\n'),
-                  ('Refine', 'Refine and improve the following text:\n'),
-                  (
-                    'Summarize',
-                    'Summarize the following in 3 bullet points:\n'
                   ),
-                  ('Explain', 'Explain the following in simple terms:\n'),
-                ])
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: ActionChip(
-                      label: Text(entry.$1),
-                      onPressed: () {
-                        _textController.text = entry.$2;
-                        _textController.selection = TextSelection.fromPosition(
-                          TextPosition(offset: _textController.text.length),
-                        );
-                      },
-                    ),
+                ),
+              if (messages.isNotEmpty &&
+                  !isStreaming &&
+                  MediaQuery.viewInsetsOf(context).bottom == 0)
+                _shortcuts(centered: false),
+              SafeArea(
+                top: false,
+                minimum: const EdgeInsets.fromLTRB(10, 4, 10, 8),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: PrismRelay.surface,
+                    borderRadius: BorderRadius.circular(19),
+                    border: Border.all(color: PrismRelay.lineStrong),
+                    boxShadow: PrismRelay.shadow,
                   ),
-              ],
-            ),
-          ),
-
-          // Text input
-          Container(
-            padding: const EdgeInsets.fromLTRB(16, 8, 8, 16),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface,
-              border: Border(
-                top: BorderSide(color: Theme.of(context).dividerColor),
-              ),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (_attachedImagePath != null)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Stack(
-                      clipBehavior: Clip.none,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        ImageAttachmentThumbnail(
-                          path: _attachedImagePath!,
-                          size: 64,
-                          borderRadius: 8,
-                        ),
-                        Positioned(
-                          top: -8,
-                          right: -8,
-                          child: IconButton(
-                            icon: const Icon(Icons.cancel, size: 20),
-                            tooltip: 'Remove image',
-                            visualDensity: VisualDensity.compact,
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(),
-                            onPressed: _removeAttachedImage,
+                        if (_attachedImagePath != null)
+                          Padding(
+                            padding:
+                                const EdgeInsetsDirectional.only(start: 12),
+                            child: Row(
+                              children: [
+                                ImageAttachmentThumbnail(
+                                    path: _attachedImagePath!,
+                                    size: 64,
+                                    borderRadius: 8),
+                                IconButton(
+                                  icon: const PrismIcon(PrismGlyph.close),
+                                  tooltip: 'Remove image',
+                                  onPressed: _removeAttachedImage,
+                                ),
+                              ],
+                            ),
                           ),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 6,
+                          children: [
+                            _ModePill(
+                              label: 'Documents',
+                              glyph: PrismGlyph.file,
+                              selected: conversation.ragEnabled,
+                              enabled: true,
+                              selectedFill: PrismRelay.mintSurface,
+                              selectedBorder: PrismRelay.mintBorder,
+                              selectedInk: PrismRelay.greenInk,
+                              tooltip: conversation.ragEnabled
+                                  ? 'Turn off Documents'
+                                  : 'Turn on Documents',
+                              onTap: () {
+                                Haptics.selection();
+                                modeActions
+                                    .toggleRagEnabled(widget.conversationId);
+                              },
+                            ),
+                            const SizedBox(width: 8),
+                            _ModePill(
+                              label: 'Tools',
+                              glyph: PrismGlyph.tools,
+                              selected:
+                                  agentCapable && conversation.toolsEnabled,
+                              enabled: agentCapable,
+                              selectedFill: PrismRelay.lilacSoft,
+                              selectedBorder: PrismRelay.lilacBorder,
+                              selectedInk: PrismRelay.plum,
+                              tooltip: !agentCapable
+                                  ? 'Tools require a model that supports tool calls'
+                                  : conversation.toolsEnabled
+                                      ? 'Turn off Tools'
+                                      : 'Turn on Tools',
+                              onTap: () {
+                                Haptics.selection();
+                                modeActions
+                                    .toggleToolsEnabled(widget.conversationId);
+                              },
+                            ),
+                          ],
+                        ),
+                        Row(
+                          children: [
+                            IconButton(
+                              icon: PrismIcon(
+                                PrismGlyph.image,
+                                color: canAttachImage
+                                    ? PrismRelay.inkSecondary
+                                    : PrismRelay.inkMuted
+                                        .withValues(alpha: .38),
+                              ),
+                              tooltip: canAttachImage
+                                  ? 'Attach image'
+                                  : 'Attaching images requires a vision-capable model',
+                              onPressed: canAttachImage && !_pickingImage
+                                  ? () {
+                                      Haptics.selection();
+                                      _pickImage();
+                                    }
+                                  : null,
+                            ),
+                            Expanded(
+                              child: TextField(
+                                controller: _textController,
+                                decoration: const InputDecoration(
+                                  hintText: 'Message Loki',
+                                  hintMaxLines: 1,
+                                  filled: false,
+                                  border: InputBorder.none,
+                                  enabledBorder: InputBorder.none,
+                                  focusedBorder: UnderlineInputBorder(
+                                      borderSide: BorderSide(
+                                          color: PrismRelay.periwinkle)),
+                                  contentPadding: EdgeInsets.symmetric(
+                                      horizontal: 6, vertical: 8),
+                                ),
+                                minLines: 1,
+                                maxLines: viewport.maxHeight < 380 ? 2 : 3,
+                                onSubmitted:
+                                    ready && !isStreaming && !_submitting
+                                        ? (_) => _sendMessage()
+                                        : null,
+                              ),
+                            ),
+                            ValueListenableBuilder<TextEditingValue>(
+                              valueListenable: _textController,
+                              builder: (_, value, __) => IconButton.filled(
+                                key: const ValueKey('send-stop'),
+                                tooltip: isStreaming
+                                    ? _stopRequested
+                                        ? 'Stopping generation'
+                                        : 'Stop generating'
+                                    : 'Send message',
+                                style: IconButton.styleFrom(
+                                  minimumSize: const Size.square(48),
+                                  backgroundColor: PrismRelay.accent,
+                                  foregroundColor: PrismRelay.surface,
+                                ),
+                                icon: PrismIcon(isStreaming
+                                    ? PrismGlyph.stop
+                                    : PrismGlyph.send),
+                                onPressed: isStreaming
+                                    ? _stopRequested
+                                        ? null
+                                        : _stopGeneration
+                                    : ready &&
+                                            !_submitting &&
+                                            (value.text.trim().isNotEmpty ||
+                                                _attachedImagePath != null)
+                                        ? _sendMessage
+                                        : null,
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
                   ),
-                Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.image_outlined),
-                      tooltip: canAttachImage
-                          ? 'Attach image'
-                          : 'Attaching images requires a vision-capable '
-                              'model (e.g. Gemma 4)',
-                      onPressed: canAttachImage ? _pickImage : null,
-                    ),
-                    Expanded(
-                      child: TextField(
-                        controller: _textController,
-                        decoration: const InputDecoration(
-                          hintText: 'Type a message...',
-                          border: OutlineInputBorder(),
-                          contentPadding:
-                              EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        ),
-                        minLines: 1,
-                        maxLines: 4,
-                        // Mirror the Send/Stop button below: Enter must not
-                        // fire a second send() while one is already
-                        // streaming, the same gate `isModelLoaded` applies
-                        // to the button's onPressed.
-                        onSubmitted: isStreaming ? null : (_) => _sendMessage(),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    // While streaming, the Send button becomes a Stop button
-                    // that halts generation and keeps the partial reply.
-                    if (isStreaming)
-                      IconButton.filled(
-                        icon: const Icon(Icons.stop),
-                        tooltip: 'Stop generating',
-                        onPressed: () {
-                          _stopReadAloud();
-                          ref
-                              .read(chatNotifierProvider(widget.conversationId)
-                                  .notifier)
-                              .stop();
-                        },
-                      )
-                    else
-                      IconButton.filled(
-                        icon: const Icon(Icons.send),
-                        onPressed: isModelLoaded ? _sendMessage : null,
-                      ),
-                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
 }
 
-/// Animated "model is thinking" indicator: three dots that pulse in sequence.
-///
-/// Shown in the assistant bubble during the gap between sending a prompt and
-/// the first streamed token, so the UI never looks frozen.
-class _TypingIndicator extends StatefulWidget {
-  const _TypingIndicator({required this.color});
+/// Composer mode toggle rendered as an icon + label pair. The selected
+/// state fills the pill with the mode's semantic tint; a disabled pill
+/// (model lacks the capability) renders as clear grey, never as ink.
+class _ModePill extends StatelessWidget {
+  const _ModePill({
+    required this.label,
+    required this.glyph,
+    required this.selected,
+    required this.enabled,
+    required this.selectedFill,
+    required this.selectedBorder,
+    required this.selectedInk,
+    required this.tooltip,
+    required this.onTap,
+  });
 
-  final Color color;
-
-  @override
-  State<_TypingIndicator> createState() => _TypingIndicatorState();
-}
-
-class _TypingIndicatorState extends State<_TypingIndicator>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-
-  static const _dotCount = 3;
-  static const _dotSize = 7.0;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1100),
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose(); // MUST be last
-  }
+  final String label;
+  final PrismGlyph glyph;
+  final bool selected;
+  final bool enabled;
+  final Color selectedFill;
+  final Color selectedBorder;
+  final Color selectedInk;
+  final String tooltip;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: _dotSize * 2,
-      child: AnimatedBuilder(
-        animation: _controller,
-        builder: (context, _) {
-          return Row(
-            mainAxisSize: MainAxisSize.min,
-            children: List.generate(_dotCount, (i) {
-              // Stagger each dot's phase so the pulse travels left-to-right.
-              final phase = (_controller.value - i * 0.18) % 1.0;
-              // Triangle wave: 0 -> 1 -> 0 across the phase.
-              final wave = (1 - (2 * phase - 1).abs()).clamp(0.0, 1.0);
-              return Padding(
-                padding: EdgeInsets.only(right: i < _dotCount - 1 ? 5 : 0),
-                child: Transform.translate(
-                  offset: Offset(0, -3 * wave),
-                  child: Opacity(
-                    opacity: 0.35 + 0.65 * wave,
-                    child: Container(
-                      width: _dotSize,
-                      height: _dotSize,
-                      decoration: BoxDecoration(
-                        color: widget.color,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  ),
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    final duration = reduceMotion ? Duration.zero : PrismRelay.motion;
+    final fg = !enabled
+        ? PrismRelay.inkMuted.withValues(alpha: .42)
+        : selected
+            ? selectedInk
+            : PrismRelay.inkSecondary;
+    return Tooltip(
+      message: tooltip,
+      child: Semantics(
+        toggled: enabled && selected,
+        button: true,
+        enabled: enabled,
+        label: label,
+        child: Material(
+          type: MaterialType.transparency,
+          borderRadius: BorderRadius.circular(12),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: enabled
+                ? onTap
+                : () => ScaffoldMessenger.of(context)
+                    .showSnackBar(SnackBar(content: Text(tooltip))),
+            child: AnimatedContainer(
+              duration: duration,
+              curve: PrismRelay.curve,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+              decoration: BoxDecoration(
+                color: enabled && selected ? selectedFill : Colors.transparent,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: enabled && selected
+                      ? selectedBorder
+                      : enabled
+                          ? PrismRelay.lineStrong
+                          : PrismRelay.line,
                 ),
-              );
-            }),
-          );
-        },
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  PrismIcon(glyph, size: 15, color: fg),
+                  const SizedBox(width: 6),
+                  Text(
+                    label,
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                          color: fg,
+                          fontWeight:
+                              enabled && selected ? FontWeight.w800 : FontWeight.w600,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

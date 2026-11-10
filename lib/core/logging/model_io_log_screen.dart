@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../theme/prism_relay.dart';
+import '../widgets/prism_icon.dart';
 import 'model_io_logger.dart';
 import 'model_io_trace.dart';
 
@@ -54,11 +56,10 @@ class _ModelIoLogScreenState extends State<ModelIoLogScreen> {
     final ordered = _traces.reversed.toList();
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: const Text('Model I/O log'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.copy_all),
+            icon: const PrismIcon(PrismGlyph.copy),
             tooltip: 'Copy all (JSONL)',
             onPressed: _traces.isEmpty
                 ? null
@@ -74,7 +75,7 @@ class _ModelIoLogScreenState extends State<ModelIoLogScreen> {
                   },
           ),
           IconButton(
-            icon: const Icon(Icons.delete_outline),
+            icon: const PrismIcon(PrismGlyph.trash),
             tooltip: 'Clear',
             onPressed: () async {
               await ModelIoLogger.instance.clear();
@@ -88,7 +89,7 @@ class _ModelIoLogScreenState extends State<ModelIoLogScreen> {
           : ordered.isEmpty
               ? const _EmptyState()
               : ListView.builder(
-                  padding: const EdgeInsets.all(8),
+                  padding: const EdgeInsets.all(20),
                   itemCount: ordered.length,
                   itemBuilder: (context, index) =>
                       _TraceTile(trace: ordered[index]),
@@ -129,13 +130,21 @@ class _TraceTile extends StatelessWidget {
     return '${two(d.hour)}:${two(d.minute)}:${two(d.second)}';
   }
 
-  ({IconData icon, Color color}) _outcomeStyle(BuildContext context) {
+  ({PrismGlyph glyph, Color color}) _outcomeStyle(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return switch (trace.outcome) {
-      TraceOutcome.done => (icon: Icons.check_circle, color: Colors.green),
-      TraceOutcome.error => (icon: Icons.error, color: scheme.error),
-      TraceOutcome.timeout => (icon: Icons.timer_off, color: Colors.orange),
-      TraceOutcome.stopped => (icon: Icons.stop_circle, color: scheme.outline),
+      TraceOutcome.done => (
+          glyph: PrismGlyph.check,
+          color: PrismRelay.greenInk
+        ),
+      TraceOutcome.error => (glyph: PrismGlyph.warn, color: scheme.error),
+      TraceOutcome.timeout => (
+          glyph: PrismGlyph.clock,
+          color: PrismRelay.amberInk
+        ),
+      TraceOutcome.stopped => (
+          glyph: PrismGlyph.stop,
+          color: scheme.outline),
     };
   }
 
@@ -146,7 +155,7 @@ class _TraceTile extends StatelessWidget {
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4),
       child: ExpansionTile(
-        leading: Icon(style.icon, color: style.color, size: 20),
+        leading: PrismIcon(style.glyph, color: style.color, size: 20),
         title: Text(
           '${_time(trace.timestampMs)} · ${trace.modelName}'
           '${trace.agentIteration != null ? ' · iter ${trace.agentIteration}' : ''}'
@@ -154,7 +163,7 @@ class _TraceTile extends StatelessWidget {
           style: const TextStyle(fontWeight: FontWeight.w600),
         ),
         subtitle: Text(
-          '${trace.tokenCount} tokens · ${trace.totalDurationMs} ms'
+          '${trace.outcome.label} · ${trace.tokenCount} tokens · ${trace.totalDurationMs} ms'
           '${ttft != null ? ' · TTFT ${ttft}ms' : ''}',
         ),
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
@@ -163,7 +172,7 @@ class _TraceTile extends StatelessWidget {
           Align(
             alignment: Alignment.centerRight,
             child: TextButton.icon(
-              icon: const Icon(Icons.copy, size: 16),
+              icon: const PrismIcon(PrismGlyph.copy, size: 16),
               label: const Text('Copy JSON'),
               onPressed: () async {
                 await Clipboard.setData(
@@ -235,7 +244,7 @@ class _Section extends StatelessWidget {
           const SizedBox(height: 2),
           SelectableText(
             body,
-            style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+            style: const TextStyle(fontFamily: 'monospace', fontSize: 14),
           ),
         ],
       ),

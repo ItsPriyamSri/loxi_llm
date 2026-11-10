@@ -15,6 +15,12 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Finished replies show the model speed and how long the turn took, on the same row as copy and read-aloud ([#99](https://github.com/LucknowAI/loki_llm/issues/99))
 - Agent tool: `model_info` — reports the loaded model, backend, context size, agent capability, and per-chat RAG flag ([#16](https://github.com/LucknowAI/loxi_llm/issues/16))
 
+### Changed
+
+- Refresh the Android interface with the Prism Relay light theme, animated model controls, an inset navigation dock, and clearer chat, document, settings, and diagnostic screens.
+- Set the UI in Plus Jakarta Sans and redraw every icon with Lucide. The models hero now shows an animated chip that energizes with real download, load and ready events, the conversation composer gains tappable Documents and Tools labels, unsupported controls render in clear grey, screen changes fade and drift, and key actions return haptic feedback. The chat list is grouped by recency with quieter rows, the dock floats without a background bar, and reply actions acknowledge a tap with a check.
+- Fix the design audit pass: flat authored brand mark (no sparkle cliché), the models hero becomes a 2.5D extruded chip that disassembles and reassembles itself on a loop once a model is resident, peach is reserved for bytes moving while mint marks a resident model, plain-language settings labels, designed empty states for the model library and prompts, confirm-before-clear diagnostics, and a "How Loki works" trust page.
+
 ### Fixed
 
 - The chat list names the model that answered and when the chat was updated, instead of "No model" on a plain row ([#103](https://github.com/LucknowAI/loki_llm/issues/103))

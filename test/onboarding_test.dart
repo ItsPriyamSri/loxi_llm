@@ -55,7 +55,7 @@ void main() {
 
       expect(
         find.text(
-          'Run powerful AI models entirely on your device — private, offline, and fast.',
+          'Private conversations with AI that runs on your phone.',
         ),
         findsOneWidget,
       );
@@ -71,7 +71,8 @@ void main() {
       expect(find.text('Download a Model'), findsOneWidget);
     });
 
-    testWidgets('third page shows Chat and Use Documents title', (tester) async {
+    testWidgets('third page shows Chat and Use Documents title',
+        (tester) async {
       await tester.pumpWidget(_buildApp(prefs));
       await tester.pump();
 
@@ -85,7 +86,8 @@ void main() {
   });
 
   group('OnboardingScreen — navigation buttons', () {
-    testWidgets('first page shows Next button, not Get Started', (tester) async {
+    testWidgets('first page shows Next button, not Get Started',
+        (tester) async {
       await tester.pumpWidget(_buildApp(prefs));
       await tester.pump();
 
@@ -111,7 +113,8 @@ void main() {
       expect(find.text('Next'), findsOneWidget);
     });
 
-    testWidgets('third page shows Get Started and Back, no Next', (tester) async {
+    testWidgets('third page shows Get Started and Back, no Next',
+        (tester) async {
       await tester.pumpWidget(_buildApp(prefs));
       await tester.pump();
 

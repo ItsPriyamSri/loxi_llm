@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/providers/inference_provider.dart';
+import '../../../core/platform/haptics.dart';
+import '../../../core/theme/prism_relay.dart';
+import '../../../core/widgets/prism_icon.dart';
 import '../domain/generation_settings.dart';
 import 'settings_notifier.dart';
 
@@ -11,8 +15,10 @@ class GenerationSettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(settingsNotifierProvider);
     final inference = ref.watch(inferenceNotifierProvider);
-    final backend = inference.valueOrNull;
-    final model = ref.read(inferenceNotifierProvider.notifier).loadedModel;
+    final backend = inference.asData?.value;
+    final model = backend == null
+        ? null
+        : ref.read(inferenceNotifierProvider.notifier).loadedModel;
     final notifier = ref.read(settingsNotifierProvider.notifier);
     final settings = model == null ? null : notifier.generationFor(model.id);
     final loadedThreads = backend?.generationParams['nThreads'];
@@ -21,15 +27,32 @@ class GenerationSettingsScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        title: Text(model?.name ?? 'Generation'),
+        title: const Text('Generation'),
       ),
       body: model == null || settings == null
-          ? const Center(
-              child: Text('Load a model to change generation settings.'),
+          ? ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
+                Card(
+                  child: ListTile(
+                    title: Text(inference.isLoading
+                        ? 'Loading model…'
+                        : inference.hasError
+                            ? 'Could not load model'
+                            : 'Load a model to edit its settings'),
+                    trailing: !inference.isLoading &&
+                            GoRouter.maybeOf(context) != null
+                        ? TextButton(
+                            onPressed: () => context.go('/models'),
+                            child: const Text('Models'))
+                        : null,
+                  ),
+                ),
+              ],
             )
           : _Sliders(
               modelId: model.id,
+              modelName: model.name,
               loadedContext: loadedContext is int ? loadedContext : 2048,
               settings: settings,
               onChanged: (next) {
@@ -68,12 +91,14 @@ class GenerationSettingsScreen extends ConsumerWidget {
 class _Sliders extends StatelessWidget {
   const _Sliders({
     required this.modelId,
+    required this.modelName,
     required this.loadedContext,
     required this.settings,
     required this.onChanged,
   });
 
   final String modelId;
+  final String modelName;
   final int loadedContext;
   final GenerationSettings settings;
   final ValueChanged<GenerationSettings> onChanged;
@@ -85,12 +110,15 @@ class _Sliders extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        Card(
+          color: PrismRelay.lilacSoft,
+          child: ListTile(
+              leading: const PrismIcon(PrismGlyph.relay, color: PrismRelay.plum),
+              title: Text(modelName)),
+        ),
+        const SizedBox(height: 24),
         Text('Next message', style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 4),
-        Text(
-          'Used on the next reply, including a tool-using turn.',
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
         _slider(
           context,
           label: 'Temperature',
@@ -112,7 +140,7 @@ class _Sliders extends StatelessWidget {
           onChanged: (v) => onChanged(settings.copyWith(maxTokens: v.round())),
         ),
         Text(
-          'Room left for the conversation: ${loadedContext - replyLength} tokens.',
+          'Space for the conversation: ${loadedContext - replyLength} tokens.',
           style: Theme.of(context).textTheme.bodySmall,
         ),
         _slider(
@@ -181,8 +209,11 @@ class _Sliders extends StatelessWidget {
         ),
         Align(
           alignment: Alignment.centerLeft,
-          child: TextButton(
-            onPressed: () => onChanged(GenerationSettings.defaultsFor(modelId)),
+          child: OutlinedButton(
+            onPressed: () {
+              Haptics.tap();
+              onChanged(GenerationSettings.defaultsFor(modelId));
+            },
             child: const Text('Reset to this model\'s defaults'),
           ),
         ),

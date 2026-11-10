@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loki_llm/core/providers/objectbox_provider.dart';
 import 'package:loki_llm/core/providers/shared_preferences_provider.dart';
+import 'package:loki_llm/core/router/app_router.dart';
+import 'package:loki_llm/core/widgets/prism_icon.dart';
 import 'package:loki_llm/features/models/domain/model.dart';
 import 'package:loki_llm/features/models/domain/model_status.dart';
 import 'package:loki_llm/main.dart';
@@ -30,12 +32,89 @@ void main() {
       // Allow async providers to settle
       await tester.pump();
 
-      expect(find.byType(NavigationBar), findsOneWidget);
-      // NavigationBar renders labels twice (visible + semantics node)
+      final app = tester.widget<MaterialApp>(find.byType(MaterialApp));
+      expect(app.theme?.scaffoldBackgroundColor, const Color(0xFFFCF7F6));
+      expect(find.byKey(const ValueKey('prism-dock')), findsOneWidget);
+      expect(
+          find.byKey(const ValueKey('prism-dock-selection')), findsOneWidget);
       expect(find.text('Models'), findsAtLeastNWidgets(1));
       expect(find.text('Chat'), findsAtLeastNWidgets(1));
       expect(find.text('Documents'), findsAtLeastNWidgets(1));
     });
+
+    testWidgets('advanced routes share the warm theme at large text',
+        (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(320, 640);
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.view.reset);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      SharedPreferences.setMockInitialValues({'onboarding_complete': true});
+      final prefs = await SharedPreferences.getInstance();
+      final container = ProviderContainer(overrides: [
+        objectBoxStoreProvider
+            .overrideWith((_) => throw UnimplementedError('No store in test')),
+        sharedPreferencesProvider.overrideWithValue(prefs),
+      ]);
+      addTearDown(container.dispose);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(container: container, child: const MyApp()),
+      );
+      await tester.pumpAndSettle();
+      final router = container.read(appRouterProvider);
+      for (final (route, title) in [
+        ('/settings', 'Settings'),
+        ('/generation', 'Generation'),
+        ('/prompts', 'Prompts'),
+        ('/logs', 'Logs (live)'),
+        ('/model-io', 'Model I/O log'),
+        ('/invalid-route', 'Page unavailable'),
+      ]) {
+        router.go(route);
+        await tester.pumpAndSettle();
+        expect(find.text(title), findsWidgets, reason: route);
+        expect(tester.takeException(), isNull, reason: route);
+      }
+    });
+  });
+
+  testWidgets('Settings shows inline sliders and saves changes',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({'onboarding_complete': true});
+    final prefs = await SharedPreferences.getInstance();
+    final container = ProviderContainer(overrides: [
+      objectBoxStoreProvider
+          .overrideWith((_) => throw UnimplementedError('No store in test')),
+      sharedPreferencesProvider.overrideWithValue(prefs),
+    ]);
+    addTearDown(container.dispose);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(container: container, child: const MyApp()),
+    );
+    await tester.pumpAndSettle();
+    container.read(appRouterProvider).go('/settings');
+    await tester.pumpAndSettle();
+
+    expect(find.byType(Slider), findsNWidgets(3));
+    expect(find.text('300'), findsOneWidget);
+    tester.widget<Slider>(find.byType(Slider).first).onChanged!(350);
+    await tester.pumpAndSettle();
+    expect(find.text('350'), findsOneWidget);
+    expect(prefs.getInt('settings_chunk_size'), 350);
+  });
+
+  testWidgets('a glyph keeps its requested size inside a larger tile',
+      (tester) async {
+    await tester.pumpWidget(const MaterialApp(
+      home: Center(
+          child: SizedBox.square(
+        dimension: 40,
+        child: PrismIcon(PrismGlyph.file, size: 18),
+      )),
+    ));
+    final icon = find.descendant(
+        of: find.byType(PrismIcon), matching: find.byType(Icon));
+    expect(tester.widget<Icon>(icon).size, 18);
   });
 
   group('Model domain', () {
@@ -65,7 +144,8 @@ void main() {
       expect(model.canLoad, isFalse);
     });
 
-    test('Model.canLoad is true when status is error and localPath is set '
+    test(
+        'Model.canLoad is true when status is error and localPath is set '
         '(retrying a failed load)', () {
       const model = Model(
         id: 'test-2b',
@@ -78,7 +158,8 @@ void main() {
       expect(model.canLoad, isTrue);
     });
 
-    test('Model.canLoad is false when status is error and localPath is null '
+    test(
+        'Model.canLoad is false when status is error and localPath is null '
         '(failed download, nothing to retry-load)', () {
       const model = Model(
         id: 'test-2c',
