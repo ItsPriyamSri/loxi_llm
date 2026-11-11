@@ -94,28 +94,22 @@ class MessageBubble extends StatelessWidget {
           maxWidth: isUser ? MediaQuery.sizeOf(context).width * .82 : 640,
         ),
         decoration: BoxDecoration(
-          color: isUser ? PrismRelay.lilacSoft : null,
-          gradient: isUser
-              ? null
-              : const LinearGradient(
-                  begin: Alignment(-.4, -.8),
-                  end: Alignment(.4, .9),
-                  colors: [Color(0xFFFFFFFF), Color(0xFFFDFCFF)],
-                ),
+          color: isUser ? const Color(0xFFDFD7F2) : const Color(0xFFF5F1FB),
           border: Border.all(
-              color: isUser ? PrismRelay.lilacBorder : PrismRelay.line),
+              color: isUser ? const Color(0xFFCFC4E8) : const Color(0xFFE6E1F1)),
           borderRadius: BorderRadius.only(
             topLeft: const Radius.circular(18),
             topRight: const Radius.circular(18),
             bottomLeft: Radius.circular(isUser ? 18 : 4),
             bottomRight: Radius.circular(isUser ? 4 : 18),
           ),
-          boxShadow: isUser ? null : PrismRelay.hairline,
+          boxShadow: PrismRelay.hairline,
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: [
+        child: IntrinsicWidth(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
             if (imagePath != null) ...[
               ImageAttachmentThumbnail(path: imagePath!, size: 200),
               const SizedBox(height: 8),
@@ -191,6 +185,7 @@ class MessageBubble extends StatelessWidget {
               ),
             ],
           ],
+        ),
         ),
       ),
     );

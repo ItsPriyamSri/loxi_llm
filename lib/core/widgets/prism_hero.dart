@@ -124,7 +124,7 @@ class PrismHero extends StatelessWidget {
                   children: [
                     if (statusGlyph != null) ...[
                       PrismIcon(statusGlyph!, size: 13, color: statusStyle.color),
-                      const SizedBox(width: 5),
+                      const SizedBox(width: 8),
                     ],
                     Expanded(
                       child: Text(
@@ -138,7 +138,7 @@ class PrismHero extends StatelessWidget {
                 ),
               ),
             Padding(
-              padding: EdgeInsets.only(top: status == null ? 0 : 5),
+              padding: EdgeInsets.only(top: status == null ? 0 : 10),
               child: Text(
                 title,
                 maxLines: 2,
@@ -148,7 +148,7 @@ class PrismHero extends StatelessWidget {
             ),
             if (detail != null)
               Padding(
-                padding: const EdgeInsets.only(top: 3),
+                padding: const EdgeInsets.only(top: 6),
                 child: DefaultTextStyle.merge(
                   style: theme.textTheme.bodySmall!.copyWith(
                     fontSize: 12,
@@ -238,6 +238,7 @@ class PrismHero extends StatelessWidget {
         },
       ),
       child: Stack(
+        clipBehavior: Clip.hardEdge,
         children: [
           // Decorative optic flare — static, only on the violet panel.
           if (_dark && !reduceMotion)

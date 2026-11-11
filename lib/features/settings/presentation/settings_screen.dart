@@ -51,6 +51,8 @@ class SettingsScreen extends ConsumerWidget {
                 title: 'Generation',
                 detail: 'Temperature, length and load settings',
                 icon: PrismGlyph.graph,
+                tint: PrismRelay.peachSurface,
+                ink: PrismRelay.amberInk,
                 onTap: () => context.push('/generation'),
               ),
               _SettingRow(
@@ -71,8 +73,8 @@ class SettingsScreen extends ConsumerWidget {
                 title: 'Allowed tools',
                 detail: 'What a supported model may call',
                 icon: PrismGlyph.tools,
-                tint: PrismRelay.peachSurface,
-                ink: PrismRelay.amberInk,
+                tint: PrismRelay.skySoft,
+                ink: PrismRelay.skyInk,
                 value: '${settings.enabledToolNames.length}',
                 onTap: () => _showTools(context),
               ),
@@ -87,6 +89,8 @@ class SettingsScreen extends ConsumerWidget {
                     'Stores full prompts and replies in unencrypted storage on this device. '
                     'Leave off for privacy.',
                 icon: PrismGlyph.lock,
+                tint: PrismRelay.mintSurface,
+                ink: PrismRelay.greenInk,
                 trailing: Switch(
                   value: settings.modelIoLoggingEnabled,
                   onChanged: notifier.setModelIoLoggingEnabled,
@@ -98,14 +102,16 @@ class SettingsScreen extends ConsumerWidget {
                     ? 'Review recorded inputs and replies'
                     : 'Turn recording on to capture traces',
                 icon: PrismGlyph.log,
+                tint: PrismRelay.mintSurface,
+                ink: PrismRelay.greenInk,
                 onTap: () => context.push('/model-io'),
               ),
               _SettingRow(
                 title: 'Diagnostic logs',
                 detail: 'App and inference activity',
                 icon: PrismGlyph.log,
-                tint: PrismRelay.skySoft,
-                ink: PrismRelay.skyInk,
+                tint: PrismRelay.mintSurface,
+                ink: PrismRelay.greenInk,
                 onTap: () => context.push('/logs'),
               ),
             ],
@@ -117,13 +123,15 @@ class SettingsScreen extends ConsumerWidget {
                 title: 'How Loki works',
                 detail: 'Offline, private, on this device',
                 icon: PrismGlyph.lock,
+                tint: PrismRelay.lilacSoft,
+                ink: PrismRelay.plum,
                 onTap: () => _howLokiWorks(context),
               ),
               _SettingRow(
                 title: 'Open-source licenses',
                 icon: PrismGlyph.link,
-                tint: PrismRelay.skySoft,
-                ink: PrismRelay.skyInk,
+                tint: PrismRelay.lilacSoft,
+                ink: PrismRelay.plum,
                 onTap: () => showLicensePage(
                   context: context,
                   applicationName: 'Loki LLM',
@@ -155,9 +163,10 @@ class _SettingsGroup extends StatelessWidget {
               child: Text(
                 title.toUpperCase(),
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: PrismRelay.inkMuted,
+                      color: PrismRelay.inkSecondary,
                       fontSize: 12,
                       letterSpacing: 1.15,
+                      fontWeight: FontWeight.w800,
                     ),
               ),
             ),
@@ -166,6 +175,7 @@ class _SettingsGroup extends StatelessWidget {
               const Divider(height: 1),
               row,
             ],
+            const Divider(height: 1),
           ],
         ),
       );
@@ -219,7 +229,9 @@ class _SettingRow extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title, style: type.titleSmall),
+                    Text(title,
+                        style:
+                            type.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
                     if (detail != null) Text(detail!, style: type.bodySmall),
                   ],
                 ),
@@ -254,10 +266,10 @@ class _SettingRow extends StatelessWidget {
 }
 
 enum _NumericSetting {
-  chunkSize('Passage length', 100, 500, 8,
-      helper: 'How much of your document Loki reads at once.'),
-  results('Passages per answer', 1, 10, 9,
-      helper: 'How many document passages Loki may use per answer.'),
+  chunkSize('Chunk size', 100, 500, 8,
+      helper: 'Text in each piece of an imported document'),
+  results('Results per question', 1, 10, 9,
+      helper: 'How many pieces to retrieve'),
   speed('Speed', .25, 1, 15, helper: null);
 
   const _NumericSetting(this.label, this.min, this.max, this.divisions,

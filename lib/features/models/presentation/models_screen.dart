@@ -364,10 +364,7 @@ class _ModelsScreenState extends ConsumerState<ModelsScreen> {
                       onAction: actionFor(presentation(models[index])),
                     ),
                     if (index != models.length - 1)
-                      const Padding(
-                        padding: EdgeInsetsDirectional.only(start: 58),
-                        child: Divider(height: 1),
-                      ),
+                      const Divider(height: 1),
                   ],
                 ],
               ),
@@ -611,40 +608,31 @@ class _ModelRow extends StatelessWidget {
   final VoidCallback? onAction;
 
   static const _identityTiles = [
-    (Color(0xFFFDEBDD), PrismRelay.amberInk),
+    (PrismRelay.peachSurface, PrismRelay.amberInk),
     (PrismRelay.skySoft, PrismRelay.skyInk),
     (PrismRelay.mintSurface, PrismRelay.greenInk),
     (PrismRelay.lilacSoft, PrismRelay.plum),
-    (PrismRelay.peachSurface, PrismRelay.amberInk),
   ];
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final model = item.model;
-    // Hue marks state first, identity second: mint = resident, peach = bytes
-    // moving, blush = failed; at rest each model keeps its own pastel.
-    final (tileBg, tileInk) = switch (item.status) {
-      ModelStatus.loaded => (PrismRelay.mintSurface, PrismRelay.greenInk),
-      ModelStatus.downloading ||
-      ModelStatus.loading ||
-      ModelStatus.paused =>
-        (PrismRelay.peachSurface, PrismRelay.amberInk),
-      ModelStatus.error => (PrismRelay.blush, PrismRelay.errorInk),
-      _ when isMultimodalModel(model) =>
-        (PrismRelay.lilacSoft, PrismRelay.plum),
-      _ => _identityTiles[index % _identityTiles.length],
-    };
-    final showBadge = item.status == ModelStatus.available &&
+    // Color lives on the icons only, in a fixed orange → blue → green →
+    // purple rotation down the library.
+    final (tileBg, tileInk) = _identityTiles[index % _identityTiles.length];
+    final showBadge = (item.status == ModelStatus.available ||
+            item.status == ModelStatus.downloaded) &&
         item.model.recommendationBadge != null;
     final stateColor = switch (item.status) {
-      ModelStatus.loaded || ModelStatus.downloaded => PrismRelay.greenInk,
       ModelStatus.error => PrismRelay.errorInk,
-      _ => PrismRelay.amberInk,
+      ModelStatus.loaded => PrismRelay.plum,
+      _ => PrismRelay.plum,
     };
     final showState = !showBadge &&
         item.status != ModelStatus.available &&
-        item.status != ModelStatus.downloaded;
+        item.status != ModelStatus.downloaded &&
+        item.status != ModelStatus.loaded;
     return Semantics(
       selected: selected,
       button: true,
@@ -678,13 +666,7 @@ class _ModelRow extends StatelessWidget {
                     child: SizedBox.square(
                       dimension: 42,
                       child: PrismIcon(
-                        item.status == ModelStatus.loaded
-                            ? PrismGlyph.check
-                            : isMultimodalModel(model)
-                                ? PrismGlyph.image
-                                : model.id.startsWith('sideload-')
-                                    ? PrismGlyph.file
-                                    : PrismGlyph.relay,
+                        PrismGlyph.models,
                         color: tileInk,
                         size: 20,
                       ),
@@ -743,12 +725,8 @@ class _ModelRow extends StatelessWidget {
                       size: 20,
                     ),
                     style: IconButton.styleFrom(
-                      backgroundColor: item.status == ModelStatus.loaded
-                          ? PrismRelay.mintSurface
-                          : PrismRelay.lilacSoft,
-                      foregroundColor: item.status == ModelStatus.loaded
-                          ? PrismRelay.greenInk
-                          : PrismRelay.plum,
+                      backgroundColor: PrismRelay.lilacSoft,
+                      foregroundColor: PrismRelay.plum,
                       minimumSize: const Size.square(44),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(13),
@@ -757,11 +735,6 @@ class _ModelRow extends StatelessWidget {
                   ),
                 ],
               ),
-              if (item.live)
-                Padding(
-                  padding: const EdgeInsetsDirectional.only(start: 54, top: 8),
-                  child: _TransferProgress(value: item.fraction),
-                ),
             ],
           ),
         ),

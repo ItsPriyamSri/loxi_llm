@@ -139,6 +139,7 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
           ],
           for (var index = 0; index < _lastDocuments.length; index++) ...[
             _DocumentRow(
+              index: index,
               document: _lastDocuments[index],
               canDelete: canImport,
               onDelete: _delete,
@@ -178,19 +179,29 @@ class _SectionHeader extends StatelessWidget {
 
 class _DocumentRow extends StatelessWidget {
   const _DocumentRow({
+    required this.index,
     required this.document,
     required this.canDelete,
     required this.onDelete,
     this.showDivider = true,
   });
 
+  final int index;
   final Document document;
   final bool canDelete;
   final Future<void> Function(Document document) onDelete;
   final bool showDivider;
 
+  static const _tiles = [
+    (PrismRelay.peachSurface, PrismRelay.amberInk),
+    (PrismRelay.skySoft, PrismRelay.skyInk),
+    (PrismRelay.mintSurface, PrismRelay.greenInk),
+    (PrismRelay.lilacSoft, PrismRelay.plum),
+  ];
+
   @override
   Widget build(BuildContext context) {
+    final (tileBg, tileInk) = _tiles[index % _tiles.length];
     return Column(
       children: [
         Tooltip(
@@ -201,13 +212,13 @@ class _DocumentRow extends StatelessWidget {
               children: [
                 DecoratedBox(
                   decoration: BoxDecoration(
-                    color: PrismRelay.mintSurface,
+                    color: tileBg,
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const SizedBox.square(
+                  child: SizedBox.square(
                     dimension: 40,
                     child: PrismIcon(PrismGlyph.file,
-                        size: 20, color: PrismRelay.greenInk),
+                        size: 20, color: tileInk),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -223,7 +234,7 @@ class _DocumentRow extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        '${document.format.toUpperCase()} · ${document.chunkCount} passages',
+                        '${document.format.toUpperCase()} · ${document.chunkCount} chunks',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -247,7 +258,6 @@ class _DocumentRow extends StatelessWidget {
         if (showDivider)
           const Divider(
             height: 1,
-            indent: 58,
             color: PrismRelay.line,
           ),
       ],
@@ -280,7 +290,7 @@ class _EmptyLibrary extends StatelessWidget {
               style: Theme.of(context).textTheme.titleSmall),
           const SizedBox(height: 4),
           Text(
-            'Your PDFs and notes will show up here with their passage counts.',
+            'Your PDFs and notes will show up here with their chunk counts.',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodySmall,
           ),

@@ -143,8 +143,16 @@ class _ConversationListView extends ConsumerWidget {
 
     final isEmpty = conversationsAsync.valueOrNull?.isEmpty ?? false;
     return Scaffold(
-      appBar: AppBar(title: const Text('Chat')),
-      body: conversationsAsync.when(
+      backgroundColor: PrismRelay.canvas,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+        title: const Text('Chat'),
+      ),
+      body: Stack(
+        children: [
+          const Positioned.fill(child: _AmbientWash()),
+          conversationsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(
           child: TextButton(
@@ -215,6 +223,8 @@ class _ConversationListView extends ConsumerWidget {
             },
           );
         },
+      ),
+      ],
       ),
       floatingActionButton: isEmpty
           ? null
@@ -374,9 +384,10 @@ class _ConversationRow extends StatelessWidget {
   final bool showDivider;
 
   static const _tiles = [
-    (PrismRelay.lilacSoft, PrismRelay.plum),
+    (PrismRelay.peachSurface, PrismRelay.amberInk),
     (PrismRelay.skySoft, PrismRelay.skyInk),
     (PrismRelay.mintSurface, PrismRelay.greenInk),
+    (PrismRelay.lilacSoft, PrismRelay.plum),
   ];
 
   @override
@@ -397,10 +408,10 @@ class _ConversationRow extends StatelessWidget {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: SizedBox.square(
-                    dimension: 40,
+                    dimension: 44,
                     child: PrismIcon(
                       PrismGlyph.chat,
-                      size: 19,
+                      size: 20,
                       color: tileInk,
                     ),
                   ),
@@ -415,7 +426,11 @@ class _ConversationRow extends StatelessWidget {
                         style: Theme.of(context)
                             .textTheme
                             .titleSmall
-                            ?.copyWith(letterSpacing: -0.1),
+                            ?.copyWith(
+                              fontSize: 15.5,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.2,
+                            ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         inlineOnly: true,
@@ -438,7 +453,7 @@ class _ConversationRow extends StatelessWidget {
                 ),
                 IconButton(
                   icon: const PrismIcon(PrismGlyph.trash,
-                      size: 19, color: PrismRelay.inkMuted),
+                      size: 19, color: PrismRelay.inkSecondary),
                   tooltip: 'Delete chat',
                   onPressed: onDelete,
                 ),
@@ -449,11 +464,64 @@ class _ConversationRow extends StatelessWidget {
         if (showDivider)
           const Divider(
             height: 1,
-            indent: 56,
-            endIndent: 0,
             color: PrismRelay.line,
           ),
       ],
     );
   }
+}
+
+/// Static ambient backdrop for the chat list: two soft washes plus a
+/// dot grid that fades out downwards. Painted once; nothing animates.
+class _AmbientWash extends StatelessWidget {
+  const _AmbientWash();
+
+  @override
+  Widget build(BuildContext context) {
+    return const IgnorePointer(
+      child: CustomPaint(
+        painter: _AmbientPainter(),
+        size: Size.infinite,
+      ),
+    );
+  }
+}
+
+class _AmbientPainter extends CustomPainter {
+  const _AmbientPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final bounds = Offset.zero & size;
+    canvas.drawRect(
+      bounds,
+      Paint()
+        ..shader = const RadialGradient(
+          center: Alignment(-.85, -.75),
+          radius: 1.35,
+          colors: [Color(0x52E9DFFA), Color(0x00E9DFFA)],
+        ).createShader(bounds),
+    );
+    canvas.drawRect(
+      bounds,
+      Paint()
+        ..shader = const RadialGradient(
+          center: Alignment(1.05, .95),
+          radius: 1.3,
+          colors: [Color(0x3DFDEBDD), Color(0x00FDEBDD)],
+        ).createShader(bounds),
+    );
+    final dot = Paint()..color = const Color(0x295B2FD6);
+    final fadeEnd = size.height * .44;
+    for (var y = 16.0; y < fadeEnd; y += 17) {
+      final fade = 1 - (y / fadeEnd);
+      dot.color = Color.fromRGBO(91, 47, 214, fade * .15);
+      for (var x = size.width * .55; x < size.width - 8; x += 17) {
+        canvas.drawCircle(Offset(x, y), 1.6, dot);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

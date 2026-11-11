@@ -32,7 +32,6 @@ abstract final class PrismRelay {
   ];
   static const skySoft = Color(0xFFE2ECFA);
   static const skyInk = Color(0xFF415F93);
-  static const coralSoft = Color(0xFFFBE7E8);
 
   static const welcomeFace = LinearGradient(
     begin: Alignment(-.42, -1),
