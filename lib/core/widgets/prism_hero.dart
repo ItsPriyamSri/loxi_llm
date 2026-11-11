@@ -237,8 +237,9 @@ class PrismHero extends StatelessWidget {
           PrismHeroVariant.plain => PrismRelay.hairline,
         },
       ),
-      child: Stack(
-        clipBehavior: Clip.hardEdge,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(22),
+        child: Stack(
         children: [
           // Decorative optic flare — static, only on the violet panel.
           if (_dark && !reduceMotion)
@@ -296,6 +297,7 @@ class PrismHero extends StatelessWidget {
               ),
             ),
         ],
+        ),
       ),
     );
   }

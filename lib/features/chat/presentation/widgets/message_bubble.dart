@@ -75,7 +75,6 @@ class MessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const statColor = PrismRelay.inkMuted;
     final showFooter = !isStreaming &&
         (speedLabel != null ||
             timeLabel != null ||
@@ -94,9 +93,19 @@ class MessageBubble extends StatelessWidget {
           maxWidth: isUser ? MediaQuery.sizeOf(context).width * .82 : 640,
         ),
         decoration: BoxDecoration(
-          color: isUser ? const Color(0xFFDFD7F2) : const Color(0xFFF5F1FB),
+          gradient: isUser
+              ? const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFFF0E9FC), Color(0xFFE4DAF8)],
+                )
+              : const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFFF2F7FD), Color(0xFFE2EBF7)],
+                ),
           border: Border.all(
-              color: isUser ? const Color(0xFFCFC4E8) : const Color(0xFFE6E1F1)),
+              color: isUser ? const Color(0xFFCFBEEB) : const Color(0xFFDDE5F1)),
           borderRadius: BorderRadius.only(
             topLeft: const Radius.circular(18),
             topRight: const Radius.circular(18),
@@ -128,29 +137,15 @@ class MessageBubble extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   if (speedLabel != null)
-                    Text(
-                      speedLabel!,
-                      style: Theme.of(context)
-                          .textTheme
-                          .labelSmall
-                          ?.copyWith(
-                            color: statColor,
-                            fontFeatures: PrismRelay.numbers,
-                          ),
+                    _MetricChip(
+                      glyph: PrismGlyph.speed,
+                      label: speedLabel!,
                     ),
-                  if (timeLabel != null) ...[
-                    if (speedLabel != null) const SizedBox(width: 8),
-                    Text(
-                      timeLabel!,
-                      style: Theme.of(context)
-                          .textTheme
-                          .labelSmall
-                          ?.copyWith(
-                            color: statColor,
-                            fontFeatures: PrismRelay.numbers,
-                          ),
+                  if (timeLabel != null)
+                    _MetricChip(
+                      glyph: PrismGlyph.clock,
+                      label: timeLabel!,
                     ),
-                  ],
                   const Spacer(),
                   if (onCopy != null)
                     _ActionIcon(
@@ -250,6 +245,39 @@ class _ActionIconState extends State<_ActionIcon> {
           if (mounted) setState(() => _justCopied = false);
         });
       },
+    );
+  }
+}
+
+
+/// Tiny icon + value pair for the metrics row — designed, not raw text.
+class _MetricChip extends StatelessWidget {
+  const _MetricChip({required this.glyph, required this.label});
+
+  final PrismGlyph glyph;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    const ink = PrismRelay.inkMuted;
+    return Padding(
+      padding: const EdgeInsetsDirectional.only(end: 10),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          PrismIcon(glyph, size: 12, color: ink),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              color: ink,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+              fontFeatures: PrismRelay.numbers,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

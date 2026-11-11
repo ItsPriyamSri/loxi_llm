@@ -471,8 +471,8 @@ class _ConversationRow extends StatelessWidget {
   }
 }
 
-/// Static ambient backdrop for the chat list: two soft washes plus a
-/// dot grid that fades out downwards. Painted once; nothing animates.
+/// Static ambient backdrop for the chat list: two soft washes.
+/// Painted once; nothing animates.
 class _AmbientWash extends StatelessWidget {
   const _AmbientWash();
 
@@ -511,15 +511,6 @@ class _AmbientPainter extends CustomPainter {
           colors: [Color(0x3DFDEBDD), Color(0x00FDEBDD)],
         ).createShader(bounds),
     );
-    final dot = Paint()..color = const Color(0x295B2FD6);
-    final fadeEnd = size.height * .44;
-    for (var y = 16.0; y < fadeEnd; y += 17) {
-      final fade = 1 - (y / fadeEnd);
-      dot.color = Color.fromRGBO(91, 47, 214, fade * .15);
-      for (var x = size.width * .55; x < size.width - 8; x += 17) {
-        canvas.drawCircle(Offset(x, y), 1.6, dot);
-      }
-    }
   }
 
   @override

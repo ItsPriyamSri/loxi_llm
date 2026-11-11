@@ -317,9 +317,10 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                   children: [
                     TextField(
                       controller: controller,
-                      maxLines: 5,
+                      minLines: 1,
+                      maxLines: 6,
                       decoration: const InputDecoration(
-                        labelText: 'System prompt',
+                        hintText: 'Enter a system prompt',
                         border: OutlineInputBorder(),
                       ),
                     ),
@@ -713,24 +714,9 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
       body: Stack(
         children: [
           const Positioned.fill(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: RadialGradient(
-                  center: Alignment(-.95, -.85),
-                  radius: 1.2,
-                  colors: [Color(0x66E9DFF7), Color(0x00E9DFF7)],
-                ),
-              ),
-            ),
-          ),
-          const Positioned.fill(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: RadialGradient(
-                  center: Alignment(1.05, .9),
-                  radius: 1.25,
-                  colors: [Color(0x55FDEBDD), Color(0x00FDEBDD)],
-                ),
+            child: IgnorePointer(
+              child: CustomPaint(
+                painter: _ConversationAmbientPainter(),
               ),
             ),
           ),
@@ -828,11 +814,11 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                                       const SizedBox(height: 6),
                                       TextButton.icon(
                                         key: const ValueKey('more-templates'),
-                                        onPressed: () => context.push('/prompts'),
+                                        onPressed: _editSystemPrompt,
                                         iconAlignment: IconAlignment.end,
                                         icon: const PrismIcon(PrismGlyph.chevron,
                                             size: 18),
-                                        label: const Text('More templates'),
+                                        label: const Text('More'),
                                       ),
                                     ],
                                   )
@@ -1074,6 +1060,10 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                                       ? PrismRelay.violetDeep
                                       : PrismRelay.accent,
                                   foregroundColor: PrismRelay.surface,
+                                  disabledBackgroundColor:
+                                      const Color(0xFFE9E3FB),
+                                  disabledForegroundColor:
+                                      PrismRelay.violetDeep,
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(13),
                                   ),
@@ -1172,9 +1162,13 @@ class _TemplateChip extends StatelessWidget {
           constraints: const BoxConstraints(minHeight: 48),
           child: DecoratedBox(
             decoration: BoxDecoration(
-              color: PrismRelay.surface,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: PrismRelay.lineStrong),
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Colors.white, Color(0xFFFBFAFF)],
+              ),
+              borderRadius: BorderRadius.circular(13),
+              border: Border.all(color: PrismRelay.lilacBorder),
             ),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -1531,4 +1525,36 @@ class _AttachRow extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Static ambient for the conversation: two soft washes. Painted once;
+/// nothing animates.
+class _ConversationAmbientPainter extends CustomPainter {
+  const _ConversationAmbientPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final bounds = Offset.zero & size;
+    canvas.drawRect(
+      bounds,
+      Paint()
+        ..shader = const RadialGradient(
+          center: Alignment(-.9, -.8),
+          radius: 1.25,
+          colors: [Color(0x57E9DFFA), Color(0x00E9DFFA)],
+        ).createShader(bounds),
+    );
+    canvas.drawRect(
+      bounds,
+      Paint()
+        ..shader = const RadialGradient(
+          center: Alignment(1.05, .9),
+          radius: 1.3,
+          colors: [Color(0x3AFDEBDD), Color(0x00FDEBDD)],
+        ).createShader(bounds),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

@@ -621,18 +621,11 @@ class _ModelRow extends StatelessWidget {
     // Color lives on the icons only, in a fixed orange → blue → green →
     // purple rotation down the library.
     final (tileBg, tileInk) = _identityTiles[index % _identityTiles.length];
-    final showBadge = (item.status == ModelStatus.available ||
-            item.status == ModelStatus.downloaded) &&
-        item.model.recommendationBadge != null;
-    final stateColor = switch (item.status) {
-      ModelStatus.error => PrismRelay.errorInk,
-      ModelStatus.loaded => PrismRelay.plum,
-      _ => PrismRelay.plum,
-    };
-    final showState = !showBadge &&
-        item.status != ModelStatus.available &&
-        item.status != ModelStatus.downloaded &&
-        item.status != ModelStatus.loaded;
+    final showBadge = item.model.recommendationBadge != null;
+    // Live transfer is the only state line the tile keeps; everything else
+    // (saved/errored/stopped) is hero-exclusive so the two never disagree.
+    final showDownloading =
+        item.status == ModelStatus.downloading && item.live;
     return Semantics(
       selected: selected,
       button: true,
@@ -695,17 +688,25 @@ class _ModelRow extends StatelessWidget {
                             padding: const EdgeInsets.only(top: 4),
                             child: _GrayPill(item.model.recommendationBadge!),
                           )
-                        else if (showState)
+                        else if (showDownloading)
                           Padding(
                             padding: const EdgeInsets.only(top: 2),
-                            child: Text(
-                              item.label,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.labelMedium?.copyWith(
-                                color: stateColor,
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.w700,
+                            child: AnimatedSwitcher(
+                              duration: MediaQuery.disableAnimationsOf(context)
+                                  ? Duration.zero
+                                  : PrismRelay.motion,
+                              switchInCurve: PrismRelay.curve,
+                              switchOutCurve: PrismRelay.curve,
+                              child: Text(
+                                item.label,
+                                key: ValueKey(item.label),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.labelMedium?.copyWith(
+                                  color: PrismRelay.plum,
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
                             ),
                           ),
