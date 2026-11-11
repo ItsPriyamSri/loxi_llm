@@ -2,36 +2,36 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 abstract final class PrismRelay {
-  static const canvas = Color(0xFFF4F3FA);
+  static const canvas = Color(0xFFF3F2FA);
   static const surface = Color(0xFFFFFFFF);
-  static const ink = Color(0xFF282733);
-  static const inkSecondary = Color(0xFF535360);
-  static const inkMuted = Color(0xFF62616D);
+  static const ink = Color(0xFF242038);
+  static const inkSecondary = Color(0xFF514F63);
+  static const inkMuted = Color(0xFF615F72);
   static const line = Color(0xFFEAE8F3);
   static const lineStrong = Color(0xFFDCD9E8);
-  static const accent = Color(0xFF6E5AD3);
-  static const brandLight = Color(0xFF8476ED);
-  static const periwinkle = Color(0xFF8271DE);
-  static const violetDeep = Color(0xFF362A92);
-  static const plum = Color(0xFF6151A6);
-  static const lilac = Color(0xFFE9DEFC);
-  static const lilacSoft = Color(0xFFF2EAFD);
-  static const lilacBorder = Color(0xFFCFC1F5);
-  static const mint = Color(0xFFABE2CB);
-  static const mintSurface = Color(0xFFE3F3E9);
-  static const greenInk = Color(0xFF266550);
+  static const accent = Color(0xFF5F2BE4);
+  static const brandLight = Color(0xFF8A5CF6);
+  static const periwinkle = Color(0xFF8F7CF0);
+  static const violetDeep = Color(0xFF4520D1);
+  static const plum = Color(0xFF5A4CA8);
+  static const lilac = Color(0xFFE7E3FA);
+  static const lilacSoft = Color(0xFFECE9F8);
+  static const lilacBorder = Color(0xFFD9D4EC);
+  static const mint = Color(0xFF9FE3BC);
+  static const mintSurface = Color(0xFFDFF3E6);
+  static const greenInk = Color(0xFF1F7A55);
   static const peach = Color(0xFFFEB987);
-  static const peachSurface = Color(0xFFFEF0E4);
-  static const amberInk = Color(0xFF87512F);
-  static const blush = Color(0xFFFEE8E8);
-  static const errorInk = Color(0xFF9D4053);
+  static const peachSurface = Color(0xFFFDEADA);
+  static const amberInk = Color(0xFFA65E1C);
+  static const blush = Color(0xFFFBE4E4);
+  static const errorInk = Color(0xFFC0392B);
   static const heroViolet = [
-    Color(0xFF4B3EC4),
-    Color(0xFF5B4DD2),
-    Color(0xFF6B5BE0),
+    Color(0xFF4E1CD3),
+    Color(0xFF6531EC),
+    Color(0xFF753DF7),
   ];
-  static const skySoft = Color(0xFFE7EEFB);
-  static const skyInk = Color(0xFF3B517E);
+  static const skySoft = Color(0xFFE2ECFA);
+  static const skyInk = Color(0xFF415F93);
   static const coralSoft = Color(0xFFFBE7E8);
 
   static const welcomeFace = LinearGradient(
@@ -53,7 +53,7 @@ abstract final class PrismRelay {
   static const accentGradient = LinearGradient(
     begin: Alignment(-.7, -1),
     end: Alignment(.7, 1),
-    colors: [Color(0xFF7A5BF0), Color(0xFF5B3BE3)],
+    colors: [Color(0xFF7C4BF6), Color(0xFF5524D6)],
   );
 
   static const rowGap = 8.0;
@@ -187,7 +187,7 @@ abstract final class PrismRelay {
       trackColor: WidgetStateProperty.resolveWith(
         (states) => states.contains(WidgetState.selected)
             ? accent
-            : const Color(0xFFE4DBE1),
+            : const Color(0xFFDCD9E8),
       ),
       trackOutlineColor: const WidgetStatePropertyAll(Colors.transparent),
     ),

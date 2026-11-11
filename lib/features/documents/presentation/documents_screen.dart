@@ -98,7 +98,7 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
             status: 'Document library',
             statusGlyph: PrismGlyph.file,
             announceStatus: false,
-            title: 'Bring your\nown reading.',
+            title: 'Bring your own reading.',
             detail: const Text('Import a PDF, DOCX or TXT file up to 10 MB.'),
             actionLabel: importing ? 'Importing…' : 'Import document',
             actionGlyph: PrismGlyph.plus,

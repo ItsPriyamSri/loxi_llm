@@ -104,8 +104,8 @@ class SettingsScreen extends ConsumerWidget {
                 title: 'Diagnostic logs',
                 detail: 'App and inference activity',
                 icon: PrismGlyph.log,
-                tint: PrismRelay.line,
-                ink: PrismRelay.inkSecondary,
+                tint: PrismRelay.skySoft,
+                ink: PrismRelay.skyInk,
                 onTap: () => context.push('/logs'),
               ),
             ],
@@ -122,8 +122,8 @@ class SettingsScreen extends ConsumerWidget {
               _SettingRow(
                 title: 'Open-source licenses',
                 icon: PrismGlyph.link,
-                tint: PrismRelay.line,
-                ink: PrismRelay.inkSecondary,
+                tint: PrismRelay.skySoft,
+                ink: PrismRelay.skyInk,
                 onTap: () => showLicensePage(
                   context: context,
                   applicationName: 'Loki LLM',

@@ -995,11 +995,11 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                   decoration: BoxDecoration(
                     color: PrismRelay.surface,
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: PrismRelay.lineStrong),
+                    border: Border.all(color: const Color(0xFFCFCBE0), width: 1.4),
                     boxShadow: PrismRelay.shadowRaised,
                   ),
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
+                    padding: const EdgeInsets.all(6),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1023,6 +1023,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                             ),
                           ),
                         Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
                             IconButton(
                               key: const ValueKey('add-to-message'),
@@ -1048,7 +1049,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                                   enabledBorder: InputBorder.none,
                                   focusedBorder: InputBorder.none,
                                   contentPadding: EdgeInsets.symmetric(
-                                      horizontal: 6, vertical: 8),
+                                      horizontal: 6, vertical: 10),
                                 ),
                                 minLines: 1,
                                 maxLines: viewport.maxHeight < 380 ? 2 : 3,
@@ -1068,7 +1069,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                                         : 'Stop generating'
                                     : 'Send message',
                                 style: IconButton.styleFrom(
-                                  minimumSize: const Size.square(46),
+                                  minimumSize: const Size.square(48),
                                   backgroundColor: isStreaming
                                       ? PrismRelay.violetDeep
                                       : PrismRelay.accent,

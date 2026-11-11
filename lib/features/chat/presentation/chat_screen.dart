@@ -80,6 +80,7 @@ class ChatScreen extends ConsumerWidget {
           PrismHero(
             variant: PrismHeroVariant.violet,
             artwork: PrismArtwork.relay,
+            artImageAsset: 'assets/art/tech-chip.png',
             pose: pending ? RelayPose.loading : RelayPose.idle,
             status: pending ? 'Loading' : failed ? 'Could not load' : 'No model',
             statusGlyph: pending

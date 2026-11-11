@@ -1,12 +1,14 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/providers/download_provider.dart';
 import '../../../core/providers/inference_provider.dart';
 import '../../../core/services/ram_check_service.dart';
 import '../../../core/theme/prism_relay.dart';
-import '../../../core/widgets/chip_art.dart';
 import '../../../core/widgets/prism_art.dart';
 import '../../../core/widgets/prism_hero.dart';
 import '../../../core/widgets/prism_icon.dart';
@@ -223,10 +225,9 @@ class _ModelsScreenState extends ConsumerState<ModelsScreen> {
             if (item != null)
               PrismHero(
                 key: const ValueKey('model-hero'),
-                variant: heroLoaded
-                    ? PrismHeroVariant.mint
-                    : PrismHeroVariant.violet,
+                variant: PrismHeroVariant.violet,
                 pose: item.pose,
+                artImageAsset: 'assets/art/tech-chip.png',
                 status: _focusedId == null &&
                         item.model.id == 'gemma3-270m-it' &&
                         item.status == ModelStatus.available
@@ -235,7 +236,9 @@ class _ModelsScreenState extends ConsumerState<ModelsScreen> {
                 statusGlyph: item.statusGlyph,
                 announceStatus: !item.live,
                 title: item.model.name,
-                detail: Text(item.metadata),
+                detail: Text(heroLoaded
+                    ? 'You can now chat offline.'
+                    : item.metadata),
                 progress: item.live || item.status == ModelStatus.loading
                     ? _HeroProgress(
                         key: ValueKey(item.model.id), value: item.fraction)
@@ -248,8 +251,10 @@ class _ModelsScreenState extends ConsumerState<ModelsScreen> {
                 actionGlyph: item.status == ModelStatus.loading
                     ? PrismGlyph.relay
                     : item.status == ModelStatus.loaded
-                        ? PrismGlyph.chat
+                        ? PrismGlyph.send
                         : item.actionIcon,
+                cornerActionLabel: heroLoaded ? 'Unload' : null,
+                onCornerAction: heroLoaded ? () => _unload(item.model) : null,
                 actionEnabled: item.status == ModelStatus.loading
                     ? false
                     : item.status == ModelStatus.loaded
@@ -375,6 +380,73 @@ class _ModelsScreenState extends ConsumerState<ModelsScreen> {
   }
 }
 
+/// The animated processor SVG, gently floating. The asset carries its own
+/// float/pulse timing; we add the same bob on top so the mount reads as
+/// alive. Reduced motion (and widget tests) freeze it in place.
+class _LoadingArt extends StatefulWidget {
+  const _LoadingArt({required this.width});
+
+  final double width;
+
+  @override
+  State<_LoadingArt> createState() => _LoadingArtState();
+}
+
+class _LoadingArtState extends State<_LoadingArt>
+    with SingleTickerProviderStateMixin {
+  static final _inTest = WidgetsBinding.instance.runtimeType
+      .toString()
+      .contains('TestWidgetsFlutterBinding');
+
+  late final AnimationController _clock = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 3800),
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final still = MediaQuery.disableAnimationsOf(context) || _inTest;
+    if (still) {
+      _clock.stop();
+      _clock.value = .5;
+    } else if (!_clock.isAnimating) {
+      _clock.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    _clock.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final still = MediaQuery.disableAnimationsOf(context) || _inTest;
+    final svg = SvgPicture.asset(
+      'assets/art/animated_layered_processor.svg',
+      width: widget.width,
+    );
+    if (still) return svg;
+    return AnimatedBuilder(
+      animation: _clock,
+      builder: (context, child) {
+        final t = _clock.value * 2 * math.pi;
+        final wave = math.sin(t);
+        return Transform.translate(
+          offset: Offset(0, -6 * (0.5 - 0.5 * math.cos(t))),
+          child: Transform.scale(
+            scale: 1 + .022 * wave.abs(),
+            child: child,
+          ),
+        );
+      },
+      child: svg,
+    );
+  }
+}
+
 class _LoadingOverlay extends StatelessWidget {
   const _LoadingOverlay({required this.modelName});
   final String modelName;
@@ -392,7 +464,7 @@ class _LoadingOverlay extends StatelessWidget {
               padding: const EdgeInsets.all(24),
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 const ExcludeSemantics(
-                  child: ChipArt(size: 176, pose: RelayPose.loading),
+                  child: _LoadingArt(width: 264),
                 ),
                 const SizedBox(height: 10),
                 Text('Loading $modelName…',
@@ -543,7 +615,7 @@ class _ModelRow extends StatelessWidget {
     (PrismRelay.skySoft, PrismRelay.skyInk),
     (PrismRelay.mintSurface, PrismRelay.greenInk),
     (PrismRelay.lilacSoft, PrismRelay.plum),
-    (PrismRelay.coralSoft, PrismRelay.errorInk),
+    (PrismRelay.peachSurface, PrismRelay.amberInk),
   ];
 
   @override
@@ -563,17 +635,16 @@ class _ModelRow extends StatelessWidget {
         (PrismRelay.lilacSoft, PrismRelay.plum),
       _ => _identityTiles[index % _identityTiles.length],
     };
+    final showBadge = item.status == ModelStatus.available &&
+        item.model.recommendationBadge != null;
     final stateColor = switch (item.status) {
-      ModelStatus.loaded ||
-      ModelStatus.downloaded =>
-        PrismRelay.greenInk,
+      ModelStatus.loaded || ModelStatus.downloaded => PrismRelay.greenInk,
       ModelStatus.error => PrismRelay.errorInk,
-      ModelStatus.available =>
-        item.model.recommendationBadge != null ? PrismRelay.plum : PrismRelay.amberInk,
       _ => PrismRelay.amberInk,
     };
-    final showState = item.status != ModelStatus.available ||
-        item.model.recommendationBadge != null;
+    final showState = !showBadge &&
+        item.status != ModelStatus.available &&
+        item.status != ModelStatus.downloaded;
     return Semantics(
       selected: selected,
       button: true,
@@ -637,7 +708,12 @@ class _ModelRow extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.bodySmall,
                         ),
-                        if (showState)
+                        if (showBadge)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: _GrayPill(item.model.recommendationBadge!),
+                          )
+                        else if (showState)
                           Padding(
                             padding: const EdgeInsets.only(top: 2),
                             child: Text(
@@ -779,4 +855,33 @@ class _TransferProgress extends StatelessWidget {
 /// fill, always visible while bytes move.
 class _HeroProgress extends _TransferProgress {
   const _HeroProgress({super.key, super.value}) : super(onDark: true);
+}
+
+/// Quiet recommendation pill — same warm grey for every badge so only the
+/// icon tiles carry color.
+class _GrayPill extends StatelessWidget {
+  const _GrayPill(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: const Color(0xFFECEAF0),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+        child: Text(
+          label,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: const Color(0xFF716E7D),
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+              ),
+        ),
+      ),
+    );
+  }
 }

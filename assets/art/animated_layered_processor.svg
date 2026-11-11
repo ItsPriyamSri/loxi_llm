@@ -1,0 +1,221 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="1536" height="1024" viewBox="0 0 768 512" role="img"
+     aria-labelledby="title desc">
+  <title id="title">Animated layered processor loading illustration</title>
+  <desc id="desc">A transparent-canvas isometric illustration of a three-tier lavender and violet processor stack with a glowing peach-orange chip, floating layers, pulsing circuit traces and animated indicator lights.</desc>
+
+  <defs>
+    <linearGradient id="topFace" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f1dfff"/>
+      <stop offset=".42" stop-color="#b58af5"/>
+      <stop offset="1" stop-color="#7041cb"/>
+    </linearGradient>
+    <linearGradient id="midFace" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#c9a3ff"/>
+      <stop offset=".55" stop-color="#8e5be8"/>
+      <stop offset="1" stop-color="#6734c2"/>
+    </linearGradient>
+    <linearGradient id="bottomFace" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#d9baff"/>
+      <stop offset=".5" stop-color="#9a67ec"/>
+      <stop offset="1" stop-color="#6032b5"/>
+    </linearGradient>
+    <linearGradient id="sidePurple" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#7543c9"/>
+      <stop offset="1" stop-color="#392071"/>
+    </linearGradient>
+    <linearGradient id="chipFace" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffe1a7"/>
+      <stop offset=".48" stop-color="#ffad83"/>
+      <stop offset="1" stop-color="#e87982"/>
+    </linearGradient>
+    <linearGradient id="chipSide" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ed9a8d"/>
+      <stop offset="1" stop-color="#a84c83"/>
+    </linearGradient>
+    <linearGradient id="trace" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#e6c9ff"/>
+      <stop offset="1" stop-color="#a66bfa"/>
+    </linearGradient>
+    <filter id="softShadow" x="-40%" y="-40%" width="180%" height="200%">
+      <feGaussianBlur stdDeviation="7"/>
+    </filter>
+    <filter id="glow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="3.2" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="chipGlow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="5" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <pattern id="microDots" width="18" height="18" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1.15" fill="#6b39bd" opacity=".62"/>
+    </pattern>
+  </defs>
+
+  <style>
+    .layer { transform-box: fill-box; transform-origin: center; }
+    .base { animation: baseFloat 3.8s ease-in-out infinite; }
+    .middle { animation: middleFloat 3.8s ease-in-out infinite; }
+    .upper { animation: upperFloat 3.8s ease-in-out infinite; }
+    .processor { animation: chipFloat 3.8s ease-in-out infinite; }
+    .halo { animation: haloPulse 2.8s ease-in-out infinite; transform-origin: 231px 166px; }
+    .trace { stroke-dasharray: 42 3; animation: traceFlow 3.4s linear infinite; }
+    .spark { animation: spark 2.2s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+    .spark.s2 { animation-delay: -.7s; }
+    .spark.s3 { animation-delay: -1.4s; }
+    .dotPulse { animation: dotPulse 1.8s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+    .dotPulse.d2 { animation-delay: -.6s; }
+    .dotPulse.d3 { animation-delay: -1.2s; }
+    @keyframes baseFloat {
+      0%,100% { transform: translateY(3px); }
+      50% { transform: translateY(-3px); }
+    }
+    @keyframes middleFloat {
+      0%,100% { transform: translateY(1px); }
+      50% { transform: translateY(-6px); }
+    }
+    @keyframes upperFloat {
+      0%,100% { transform: translateY(-1px); }
+      50% { transform: translateY(-9px); }
+    }
+    @keyframes chipFloat {
+      0%,100% { transform: translateY(-2px) scale(1); }
+      50% { transform: translateY(-13px) scale(1.025); }
+    }
+    @keyframes haloPulse {
+      0%,100% { opacity: .22; transform: scale(.96); }
+      50% { opacity: .52; transform: scale(1.06); }
+    }
+    @keyframes traceFlow { to { stroke-dashoffset: -45; } }
+    @keyframes spark {
+      0%,100% { opacity: .35; transform: scale(.8); }
+      50% { opacity: 1; transform: scale(1.25); }
+    }
+    @keyframes dotPulse {
+      0%,100% { opacity: .45; transform: scale(.85); }
+      50% { opacity: 1; transform: scale(1.3); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .layer,.halo,.trace,.spark,.dotPulse { animation: none !important; }
+    }
+  </style>
+
+  <!-- Transparent canvas: peripheral circuit paths are placed around the stack -->
+  <g fill="none" stroke="url(#trace)" stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round" opacity=".78">
+    <path class="trace" d="M55 365 H145 L164 353 L188 337"/>
+    <path class="trace" d="M565 156 L622 117 H706"/>
+    <path class="trace" d="M566 377 L622 411 H700"/>
+    <path d="M604 100 H675" opacity=".55"/>
+    <path d="M78 386 H156" opacity=".55"/>
+    <path d="M603 432 H650" opacity=".55"/>
+  </g>
+  <g fill="none" stroke="#b98af0" stroke-width="1.7" stroke-linecap="round">
+    <path d="M140 99 V125 M127 112 H153"/>
+    <path d="M586 53 V79 M573 66 H599"/>
+  </g>
+  <g>
+    <circle cx="55" cy="365" r="8" fill="#e68ca5" class="dotPulse"/>
+    <circle cx="706" cy="117" r="8" fill="#ed8c92" class="dotPulse d2"/>
+    <circle cx="700" cy="411" r="8" fill="#b987f2" class="dotPulse d3"/>
+    <circle cx="565" cy="156" r="2.2" fill="#ead2ff" class="spark s2"/>
+  </g>
+
+  <!-- Soft contact shadow only; the SVG canvas itself remains transparent -->
+
+  <!-- Main isometric stack. Non-uniform scaling matches the wider reference composition. -->
+  <g id="processor-stack" transform="translate(31 52) scale(1.5 1.4)">
+  <!-- Lowest chassis -->
+  <g class="layer base">
+    <path d="M62 187 205 116 Q231 101 257 116 L380 187 Q405 201 380 216 L257 288 Q231 303 205 288 L62 216 Q37 201.5 62 187Z"
+          fill="#39206f" opacity=".48" transform="translate(0 13)"/>
+    <path d="M62 182 205 111 Q231 96 257 111 L380 182 Q405 196 380 211 L257 283 Q231 298 205 283 L62 211 Q37 196.5 62 182Z"
+          fill="url(#sidePurple)"/>
+    <path d="M62 167 205 96 Q231 81 257 96 L380 167 Q405 181 380 196 L257 268 Q231 283 205 268 L62 196 Q37 181.5 62 167Z"
+          fill="url(#bottomFace)" stroke="#d8baff" stroke-width="1.8"/>
+    <path d="M62 167 205 96 Q231 81 257 96 L380 167 Q405 181 380 196 L257 268 Q231 283 205 268 L62 196 Q37 181.5 62 167Z"
+          fill="none" stroke="#f1dcff" stroke-width="1.1" opacity=".65"/>
+    <path d="M81 204 206 275 Q231 289 256 275 L358 216" fill="none" stroke="#bd8df6" stroke-width="1.4" opacity=".55"/>
+    <path d="M320 236 344 222 M348 220 360 213" stroke="#ffd56e" stroke-width="3.2" stroke-linecap="round"/>
+    <path d="M118 230 151 249" stroke="#b98cf5" stroke-width="2.1" stroke-linecap="round" opacity=".7"/>
+  </g>
+
+  <!-- Middle floating plate -->
+  <g class="layer middle">
+    <path d="M80 144 205 82 Q231 67 257 82 L365 144 Q389 158 365 172 L257 235 Q231 250 205 235 L80 172 Q56 158 80 144Z"
+          fill="#43227f" opacity=".72" transform="translate(0 12)"/>
+    <path d="M80 134 205 72 Q231 57 257 72 L365 134 Q389 148 365 162 L257 225 Q231 240 205 225 L80 162 Q56 148 80 134Z"
+          fill="url(#sidePurple)"/>
+    <path d="M80 119 205 57 Q231 42 257 57 L365 119 Q389 133 365 147 L257 210 Q231 225 205 210 L80 147 Q56 133 80 119Z"
+          fill="url(#midFace)" stroke="#d7b4ff" stroke-width="1.8"/>
+    <path d="M80 119 205 57 Q231 42 257 57 L365 119 Q389 133 365 147 L257 210 Q231 225 205 210 L80 147 Q56 133 80 119Z"
+          fill="none" stroke="#f1dcff" stroke-width="1.05" opacity=".65"/>
+    <path d="M94 132 207 78 Q231 64 255 78 L349 132 Q366 142 349 152 L255 207 Q231 221 207 207 L94 152 Q77 142 94 132Z"
+          fill="none" stroke="#e8d0ff" stroke-width="1.1" opacity=".48"/>
+    <path d="M97 149 207 212 Q231 226 255 212 L347 159" fill="none" stroke="#a77be9" stroke-width="1.4" opacity=".5"/>
+  </g>
+
+  <!-- Upper detailed circuit board -->
+  <g class="layer upper">
+    <path d="M96 104 207 47 Q231 33 255 47 L354 104 Q378 118 354 132 L255 189 Q231 203 207 189 L96 132 Q72 118 96 104Z"
+          fill="#3b1d79" opacity=".75" transform="translate(0 12)"/>
+    <path d="M96 88 207 31 Q231 17 255 31 L354 88 Q378 102 354 116 L255 173 Q231 187 207 173 L96 116 Q72 102 96 88Z"
+          fill="url(#sidePurple)"/>
+    <path d="M96 72 207 15 Q231 1 255 15 L354 72 Q378 86 354 100 L255 157 Q231 171 207 157 L96 100 Q72 86 96 72Z"
+          fill="url(#topFace)" stroke="#f0dfff" stroke-width="1.8"/>
+    <path d="M96 72 207 15 Q231 1 255 15 L354 72 Q378 86 354 100 L255 157 Q231 171 207 157 L96 100 Q72 86 96 72Z"
+          fill="none" stroke="#fff0ff" stroke-width="1.05" opacity=".72"/>
+    <path d="M119 79 210 34 Q231 22 252 34 L330 79 Q350 91 330 102 L252 147 Q231 159 210 147 L119 102 Q99 91 119 79Z"
+          fill="url(#microDots)" opacity=".9"/>
+    <path d="M119 79 210 34 Q231 22 252 34 L330 79 Q350 91 330 102 L252 147 Q231 159 210 147 L119 102 Q99 91 119 79Z"
+          fill="none" stroke="#f8eaff" stroke-width="1.2" opacity=".72"/>
+    <path d="M130 73 211 37 Q231 25 251 37 L314 73 Q335 85 314 97 L251 133 Q231 145 211 133 L130 97 Q109 85 130 73Z"
+          fill="none" stroke="#d8b9ff" stroke-width="1" opacity=".38"/>
+    <!-- board traces -->
+    <g fill="none" stroke="#f6e8ff" stroke-width="1.65" stroke-linecap="round">
+      <path d="M130 104 151 116"/>
+      <path d="M169 126 188 137" opacity=".8"/>
+      <path d="M275 129 294 118"/>
+      <path d="M300 112 318 102" opacity=".8"/>
+      <path d="M164 91 181 101" opacity=".75"/>
+    </g>
+    <circle cx="129" cy="80" r="3" fill="#fff5ff"/>
+    <circle cx="231" cy="164" r="3.2" fill="#fff4ff"/>
+    <circle cx="330" cy="80" r="3" fill="#ffdf72" class="spark"/>
+    <circle cx="231" cy="164" r="1.5" fill="#fff" class="spark s2"/>
+    <g fill="#6737b7" opacity=".72">
+      <circle cx="146" cy="69" r="1.2"/><circle cx="160" cy="61" r="1.2"/>
+      <circle cx="176" cy="52" r="1.2"/><circle cx="192" cy="43" r="1.2"/>
+      <circle cx="269" cy="44" r="1.2"/><circle cx="285" cy="53" r="1.2"/>
+      <circle cx="300" cy="62" r="1.2"/><circle cx="316" cy="71" r="1.2"/>
+      <circle cx="146" cy="96" r="1.2"/><circle cx="160" cy="104" r="1.2"/>
+      <circle cx="175" cy="113" r="1.2"/><circle cx="286" cy="126" r="1.2"/>
+      <circle cx="301" cy="117" r="1.2"/><circle cx="316" cy="108" r="1.2"/>
+    </g>
+  </g>
+
+  <!-- Recessed socket and processor -->
+  <g class="layer processor">
+    <path d="M171 91 218 64 Q231 57 244 64 L288 89 Q305 99 288 109 L244 135 Q231 142 218 135 L171 108 Q154 99 171 91Z"
+          fill="#3d1c7a" opacity=".92"/>
+    <path d="M177 88 218 65 Q231 57 244 65 L282 87 Q296 95 282 103 L244 125 Q231 133 218 125 L177 102 Q163 95 177 88Z"
+          fill="#4e2a91" stroke="#c69af7" stroke-width="1.2"/>
+    <path d="M181 77 219 55 Q231 48 243 55 L279 76 Q291 83 279 90 L243 111 Q231 118 219 111 L181 90 Q169 83 181 77Z"
+          fill="url(#chipSide)" opacity=".95"/>
+    <path d="M181 70 219 48 Q231 41 243 48 L279 69 Q291 76 279 83 L243 105 Q231 112 219 105 L181 83 Q169 76 181 70Z"
+          fill="url(#chipFace)" stroke="#ffe8b9" stroke-width="1.5" filter="url(#chipGlow)"/>
+    <path d="M194 73 221 58 Q231 52 241 58 L268 73" fill="none" stroke="#fff5d9" stroke-width="1.7" stroke-linecap="round"/>
+    <path d="M194 79 220 94 Q231 100 242 94 L268 79" fill="none" stroke="#fff0ce" stroke-width="1.5" stroke-linecap="round" opacity=".92"/>
+    <path d="M219 48 243 48 279 69" fill="none" stroke="#fff7d7" stroke-width="1" opacity=".8"/>
+  </g>
+
+  </g> <!-- /processor-stack -->
+
+  <!-- Tiny moving glints around the circuit endpoints -->
+  <g filter="url(#glow)">
+    <circle class="spark" cx="55" cy="365" r="3" fill="#f2a3b8"/>
+    <circle class="spark s2" cx="706" cy="117" r="3" fill="#ff9ca0"/>
+    <circle class="spark s3" cx="700" cy="411" r="3" fill="#c5a0ff"/>
+  </g>
+</svg>

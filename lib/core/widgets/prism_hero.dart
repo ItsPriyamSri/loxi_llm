@@ -31,12 +31,17 @@ class PrismHero extends StatelessWidget {
     this.actionEnabled = true,
     this.artwork = PrismArtwork.relay,
     this.pose = RelayPose.idle,
+    this.artImageAsset,
+    this.cornerActionLabel,
+    this.cornerActionGlyph,
+    this.onCornerAction,
   });
 
   final String title;
   final PrismHeroVariant variant;
 
-  /// Small caps line above the title. Pair with [statusGlyph].
+  /// Small status line above the title. Rendered verbatim — pass the case
+  /// you want ("Ready on this device", or "DOWNLOADING · 38%" for in-flight).
   final String? status;
   final PrismGlyph? statusGlyph;
   final Widget? detail;
@@ -56,6 +61,15 @@ class PrismHero extends StatelessWidget {
   final PrismArtwork artwork;
   final RelayPose pose;
 
+  /// Optional raster art (transparent PNG) that replaces the painted
+  /// artwork. Used when the authored illustration asset is preferred.
+  final String? artImageAsset;
+
+  /// A whisper-of-a-pill pinned to the hero's top right (e.g. "Unload").
+  final String? cornerActionLabel;
+  final PrismGlyph? cornerActionGlyph;
+  final VoidCallback? onCornerAction;
+
   bool get _dark => variant == PrismHeroVariant.violet;
 
   @override
@@ -72,22 +86,30 @@ class PrismHero extends StatelessWidget {
       color: foreground,
     );
     final statusStyle = theme.textTheme.labelSmall!.copyWith(
-      fontSize: 11,
-      fontWeight: FontWeight.w800,
-      letterSpacing: 1.15,
-      color: _dark ? const Color(0xFFE4DCFF) : PrismRelay.greenInk,
+      fontSize: 11.5,
+      fontWeight: FontWeight.w700,
+      letterSpacing: .4,
+      color: _dark ? const Color(0xFFEDE6FF) : PrismRelay.greenInk,
     );
 
-    Widget artFor(double width) => DecoratedBox(
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: RadialGradient(colors: [
-              wash.withValues(alpha: .28),
-              wash.withValues(alpha: 0),
-            ]),
-          ),
-          child: PrismArt(artwork: artwork, pose: pose, size: width),
-        );
+    Widget artFor(double width) => artImageAsset == null
+        ? DecoratedBox(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(colors: [
+                wash.withValues(alpha: .28),
+                wash.withValues(alpha: 0),
+              ]),
+            ),
+            child: PrismArt(artwork: artwork, pose: pose, size: width),
+          )
+        : Image.asset(
+            artImageAsset!,
+            width: width,
+            height: width,
+            fit: BoxFit.contain,
+            filterQuality: FilterQuality.medium,
+          );
 
     final content = ConstrainedBox(
       constraints: const BoxConstraints(minHeight: 172),
@@ -106,7 +128,7 @@ class PrismHero extends StatelessWidget {
                     ],
                     Expanded(
                       child: Text(
-                        status!.toUpperCase(),
+                        status!,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: statusStyle,
@@ -169,7 +191,7 @@ class PrismHero extends StatelessWidget {
       duration: reduce,
       curve: PrismRelay.curve,
       width: double.infinity,
-      height: PrismRelay.heroHeight,
+      constraints: const BoxConstraints(minHeight: PrismRelay.heroHeight),
       decoration: BoxDecoration(
         gradient: switch (variant) {
           PrismHeroVariant.violet => const LinearGradient(
@@ -230,8 +252,23 @@ class PrismHero extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 14, 8, 12),
             child: LayoutBuilder(
               builder: (context, constraints) {
+                final bigText = MediaQuery.textScalerOf(context).scale(16) > 23;
+                if (bigText) {
+                  // At large text the hero stacks: art floats top-right,
+                  // the CTA keeps the full width instead of being squeezed.
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Align(
+                        alignment: AlignmentDirectional.centerEnd,
+                        child: artFor(88),
+                      ),
+                      content,
+                    ],
+                  );
+                }
                 final artSize =
-                    (constraints.maxWidth * .42).clamp(112.0, PrismRelay.artStage);
+                    (constraints.maxWidth * .46).clamp(120.0, PrismRelay.artStage);
                 return Row(
                   children: [
                     Expanded(child: content),
@@ -247,6 +284,16 @@ class PrismHero extends StatelessWidget {
               },
             ),
           ),
+          if (cornerActionLabel != null)
+            Positioned(
+              top: 14,
+              right: 14,
+              child: _CornerPill(
+                label: cornerActionLabel!,
+                glyph: cornerActionGlyph,
+                onTap: onCornerAction,
+              ),
+            ),
         ],
       ),
     );
@@ -342,6 +389,58 @@ class _HeroAction extends StatelessWidget {
                   PrismIcon(glyph!, size: 19, color: enabled ? fg : fg.withValues(alpha: .55)),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The whisper-of-a-pill in the hero's top right — a translucent dark chip
+/// with near-white text. Used for quiet secondary actions (e.g. Unload).
+class _CornerPill extends StatelessWidget {
+  const _CornerPill({
+    required this.label,
+    this.glyph,
+    this.onTap,
+  });
+
+  final String label;
+  final PrismGlyph? glyph;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      type: MaterialType.transparency,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          height: 48,
+          padding: const EdgeInsets.symmetric(horizontal: 15),
+          decoration: BoxDecoration(
+            color: const Color(0x382E1463),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: const Color(0x2EFFFFFF)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (glyph != null) ...[
+                PrismIcon(glyph!, size: 14, color: Colors.white),
+                const SizedBox(width: 6),
+              ],
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+            ],
           ),
         ),
       ),
