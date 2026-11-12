@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:loki_llm/core/widgets/prism_icon.dart';
 import 'package:loki_llm/features/chat/presentation/widgets/message_bubble.dart';
 
 // Minimal valid 1x1 red PNG, used so Image.file has real bytes to decode.
@@ -132,7 +133,10 @@ void main() {
       await tester.pump();
     });
 
-    expect(find.byIcon(Icons.broken_image_outlined), findsOneWidget);
+    expect(
+      _glyph(PrismGlyph.brokenImage),
+      findsOneWidget,
+    );
   });
 
   testWidgets('assistant bubble renders markdown instead of raw markers',
@@ -192,12 +196,20 @@ void main() {
     }
 
     await tester.pumpWidget(bubble(speaking: true, paused: false));
-    expect(find.byIcon(Icons.pause_circle_outlined), findsOneWidget);
-    expect(find.byIcon(Icons.stop_circle_outlined), findsOneWidget);
+    expect(
+        _glyph(PrismGlyph.pause),
+        findsOneWidget);
+    expect(
+        _glyph(PrismGlyph.stop),
+        findsOneWidget);
 
     await tester.pumpWidget(bubble(speaking: false, paused: true));
-    expect(find.byIcon(Icons.play_circle_outlined), findsOneWidget);
-    expect(find.byIcon(Icons.stop_circle_outlined), findsOneWidget);
+    expect(
+        _glyph(PrismGlyph.play),
+        findsOneWidget);
+    expect(
+        _glyph(PrismGlyph.stop),
+        findsOneWidget);
   });
 
   test('reply stats label uses model-call speed and the whole wait', () {
@@ -227,3 +239,6 @@ void main() {
     );
   });
 }
+
+Finder _glyph(PrismGlyph glyph) => find.byWidgetPredicate(
+    (widget) => widget is PrismIcon && widget.glyph == glyph);

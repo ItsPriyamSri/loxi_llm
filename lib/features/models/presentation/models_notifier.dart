@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -98,18 +99,42 @@ bool shouldReconcileStaleModels() {
   return true;
 }
 
-/// Which of [models] have a `loaded`/`loading` status that can't be trusted
-/// after an app restart (no backend survives one) and should be reset to
-/// `downloaded`. Pure — returns the subset needing the fix, already
-/// `copyWith(status: downloaded)`; the caller persists them.
+/// Which of [models] have a status that can't be trusted after an app
+/// restart, already fixed; the caller persists them. Pure.
+///
+/// - `loaded`/`loading` with a file: no backend survives a restart, so
+///   back to `downloaded`.
+/// - `downloading`/`error` with no file: the transfer died with the app, or
+///   failed last session. Back to `available`; a new download resumes from
+///   any partial file on disk.
 List<Model> staleModelsToReconcile(List<Model> models) {
   return [
     for (final m in models)
       if ((m.status == ModelStatus.loaded || m.status == ModelStatus.loading) &&
           m.localPath != null)
-        m.copyWith(status: ModelStatus.downloaded),
+        m.copyWith(status: ModelStatus.downloaded)
+      else if ((m.status == ModelStatus.downloading ||
+              m.status == ModelStatus.error) &&
+          m.localPath == null)
+        m.copyWith(status: ModelStatus.available, downloadProgress: 0.0),
   ];
 }
+
+/// How often a live download saves its progress and rebuilds the catalog.
+const kDownloadProgressInterval = Duration(milliseconds: 250);
+
+/// Whether a download progress tick should be saved and shown. Dio reports
+/// every network chunk, hundreds of times a second; saving and rebuilding on
+/// each one made the Models screen jitter. Four updates a second, plus the
+/// final one, reads as smooth with the progress bar's tween.
+bool shouldPublishDownloadProgress({
+  required double progress,
+  required DateTime now,
+  required DateTime? lastPublished,
+}) =>
+    progress >= 1.0 ||
+    lastPublished == null ||
+    now.difference(lastPublished) >= kDownloadProgressInterval;
 
 @riverpod
 class ModelsNotifier extends _$ModelsNotifier {
@@ -131,8 +156,8 @@ class ModelsNotifier extends _$ModelsNotifier {
       }
       models = repo.getAll();
     }
-    // Reconcile stale in-memory state: no backend survives an app restart,
-    // so any row persisted as loaded/loading must drop back to downloaded.
+    // Reconcile stale state: no backend or transfer survives an app restart
+    // (see staleModelsToReconcile).
     // Runs exactly once per app session (see shouldReconcileStaleModels) —
     // this is a cold-start recovery step, not something to redo on every
     // live rebuild (every loadModel()/downloadModel() call invalidates this
@@ -171,14 +196,24 @@ class ModelsNotifier extends _$ModelsNotifier {
     final url = huggingFaceDownloadUrl(model);
     final mmprojUrl = huggingFaceMmprojDownloadUrl(model);
 
+    DateTime? lastPublished;
     try {
       final result = await service.downloadModel(
         model: model,
         downloadUrl: url,
         mmprojDownloadUrl: mmprojUrl,
         onProgress: (progress, bytesPerSecond) {
+          final now = DateTime.now();
+          if (!shouldPublishDownloadProgress(
+            progress: progress,
+            now: now,
+            lastPublished: lastPublished,
+          )) {
+            return;
+          }
           final current = repo.getById(modelId);
           if (current != null) {
+            lastPublished = now;
             downloadSpeed[modelId] = bytesPerSecond;
             repo.save(current.copyWith(downloadProgress: progress));
             ref.invalidateSelf();
@@ -196,6 +231,8 @@ class ModelsNotifier extends _$ModelsNotifier {
         ));
       }
     } catch (e, st) {
+      // A user stop is not a failure: cancelDownload already reset the row.
+      if (e is DioException && CancelToken.isCancel(e)) return;
       AppLogger.instance.error(
           'ModelsNotifier', 'Failed to download model $modelId', e, st);
       final current = repo.getById(modelId);
@@ -268,10 +305,9 @@ class ModelsNotifier extends _$ModelsNotifier {
   /// racing the single native backend (InferenceNotifier/LlamaEngine.instance).
   ///
   /// A genuine backend load failure instead propagates as whatever
-  /// [InferenceNotifier.loadModel] threw — callers shouldn't show feedback
-  /// for that themselves, since it's already surfaced via
-  /// `inferenceNotifierProvider`'s `AsyncError` state (see the Models
-  /// screen's `ref.listen`); showing it again here would double up.
+  /// [InferenceNotifier.loadModel] threw, after the model is saved with
+  /// [ModelStatus.error] and `inferenceNotifierProvider` holds the
+  /// user-facing error. The Models screen shows that reason in its hero.
   Future<void> loadModel(String modelId) async {
     final repo = ref.read(modelRepositoryProvider);
     final model = repo.getById(modelId);

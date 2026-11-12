@@ -4,16 +4,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:loki_llm/core/providers/objectbox_provider.dart';
 import 'package:loki_llm/core/platform/flutter_tts_service.dart';
 import 'package:loki_llm/core/providers/shared_preferences_provider.dart';
 import 'package:loki_llm/core/providers/tts_provider.dart';
+import 'package:loki_llm/core/router/app_router.dart';
 import 'package:loki_llm/core/services/tts_service.dart';
+import 'package:loki_llm/core/theme/prism_relay.dart';
 import 'package:loki_llm/features/chat/data/conversation_repository.dart';
 import 'package:loki_llm/features/chat/data/message_repository.dart';
 import 'package:loki_llm/features/chat/domain/conversation.dart';
 import 'package:loki_llm/features/chat/domain/message.dart';
 import 'package:loki_llm/features/chat/domain/message_role.dart';
 import 'package:loki_llm/features/chat/presentation/conversation_screen.dart';
+import 'package:loki_llm/main.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -58,7 +62,115 @@ void main() {
     });
   });
 
+  testWidgets('applying a saved prompt swaps the centered controls',
+      (tester) async {
+    final container = await _openChat(_FakeTts(), blank: true);
+    await tester.pumpWidget(_app(container));
+    await tester.pumpAndSettle();
+    // Before selection: the template grid owns the screen center and the
+    // shortcuts ride above the composer.
+    expect(find.byKey(const ValueKey('saved-prompts')), findsOneWidget);
+    expect(find.byKey(const ValueKey('centered-shortcuts')), findsNothing);
+    final quick = find.byKey(const ValueKey('quick-shortcuts'));
+    expect(find.descendant(of: quick, matching: find.text('Translate')),
+        findsOneWidget);
+    await tester.tap(find.text('Concise'));
+    await tester.pumpAndSettle();
+    // After selection: the grid yields and the shortcuts take the center.
+    expect(find.byKey(const ValueKey('saved-prompts')), findsNothing);
+    expect(find.byKey(const ValueKey('quick-shortcuts')), findsNothing);
+    expect(find.text('Concise'), findsNothing);
+    final shortcuts = find.byKey(const ValueKey('centered-shortcuts'));
+    expect(find.descendant(of: shortcuts, matching: find.text('Translate')),
+        findsOneWidget);
+    expect(find.byTooltip('System prompt'), findsOneWidget);
+  });
+
+  testWidgets('the shortcut row hides while the keyboard is up',
+      (tester) async {
+    addTearDown(tester.view.reset);
+    final container = await _openChat(_FakeTts(), blank: true);
+    await tester.pumpWidget(_app(container));
+    await tester.pumpAndSettle();
+    final quick = find.byKey(const ValueKey('quick-shortcuts'));
+    expect(quick, findsOneWidget);
+
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+    await tester.pumpAndSettle();
+    expect(quick, findsNothing);
+  });
+
+  testWidgets('composer controls remain reachable at 200% with the keyboard',
+      (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.viewInsets = const FakeViewPadding(bottom: 240);
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(tester.view.reset);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    final container = await _openChat(_FakeTts(), blank: true);
+
+    await tester.pumpWidget(_app(container));
+    await tester.pumpAndSettle();
+    // Open the add-to-message sheet and toggle Documents from it.
+    await tester.tap(find.byKey(const ValueKey('add-to-message')));
+    await tester.pumpAndSettle();
+    final docsRow = find.text('Documents');
+    expect(docsRow.hitTestable(), findsOneWidget);
+    final before = tester.widget<Switch>(find.byType(Switch).first).value;
+    await tester.tap(docsRow);
+    await tester.pumpAndSettle();
+    final after = tester.widget<Switch>(find.byType(Switch).first).value;
+    expect(after, isNot(before));
+    // Tools stay visible but greyed when the model cannot call them.
+    expect(find.text('Tools'), findsOneWidget);
+    await tester.tapAt(const Offset(1, 1)); // dismiss sheet via barrier
+    await tester.pumpAndSettle();
+    expect(
+        find.byKey(const ValueKey('send-stop')).hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the dock keeps a conversation draft through a Models round trip',
+      (tester) async {
+    final container = await _openChat(_FakeTts(), blank: true);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(container: container, child: const MyApp()),
+    );
+    await tester.pumpAndSettle();
+    container.read(appRouterProvider).go('/chat/c1');
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'Draft for the local model');
+
+    final dock = find.byKey(const ValueKey('prism-dock'));
+    await tester.tap(find.descendant(of: dock, matching: find.text('Models')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(of: dock, matching: find.text('Chat')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Draft for the local model'), findsOneWidget);
+    expect(find.byTooltip('System prompt'), findsOneWidget);
+  });
+
   group('read aloud on a conversation', () {
+    testWidgets('leaving the chat stops reading', (tester) async {
+      final tts = _FakeTts();
+      final container = await _openChat(tts);
+      await tester.pumpWidget(_app(container));
+      await tester.pump();
+
+      await tester.tap(find.byTooltip('Read aloud').first);
+      await tester.pump();
+      await tester.pumpWidget(UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: SizedBox()),
+      ));
+      expect(tts.calls, ['speak', 'stop']);
+
+      tts.speakGate!.complete();
+      await tester.pump();
+    });
+
     testWidgets('pause then resume', (tester) async {
       final tts = _FakeTts();
       final container = await _openChat(tts);
@@ -190,12 +302,18 @@ final class _FakeTts implements TtsService {
 Widget _app(ProviderContainer container) {
   return UncontrolledProviderScope(
     container: container,
-    child: const MaterialApp(home: ConversationScreen(conversationId: 'c1')),
+    child: MaterialApp(
+        theme: PrismRelay.light,
+        home: const ConversationScreen(conversationId: 'c1')),
   );
 }
 
-Future<ProviderContainer> _openChat(_FakeTts tts) async {
-  SharedPreferences.setMockInitialValues({});
+Future<ProviderContainer> _openChat(_FakeTts tts, {bool blank = false}) async {
+  SharedPreferences.setMockInitialValues({
+    'onboarding_complete': true,
+    if (blank)
+      'settings_prompt_library': '[{"name":"Concise","body":"Keep it brief."}]',
+  });
   final prefs = await SharedPreferences.getInstance();
   final conversations = _MemoryConversations()
     ..save(const Conversation(
@@ -204,24 +322,29 @@ Future<ProviderContainer> _openChat(_FakeTts tts) async {
       createdAtMs: 1,
       updatedAtMs: 1,
     ));
-  final messages = _MemoryMessages()
-    ..save(const Message(
-      id: 'a',
-      conversationId: 'c1',
-      role: MessageRole.assistant,
-      content: 'alpha',
-      createdAtMs: 1,
-    ))
-    ..save(const Message(
-      id: 'b',
-      conversationId: 'c1',
-      role: MessageRole.assistant,
-      content: 'beta',
-      createdAtMs: 2,
-    ));
+  final messages = _MemoryMessages();
+  if (!blank) {
+    messages
+      ..save(const Message(
+        id: 'a',
+        conversationId: 'c1',
+        role: MessageRole.assistant,
+        content: 'alpha',
+        createdAtMs: 1,
+      ))
+      ..save(const Message(
+        id: 'b',
+        conversationId: 'c1',
+        role: MessageRole.assistant,
+        content: 'beta',
+        createdAtMs: 2,
+      ));
+  }
   final container = ProviderContainer(
     overrides: [
       sharedPreferencesProvider.overrideWithValue(prefs),
+      objectBoxStoreProvider
+          .overrideWith((_) => throw UnimplementedError('No store in test')),
       ttsServiceProvider.overrideWithValue(tts),
       conversationRepositoryProvider.overrideWith((ref) => conversations),
       messageRepositoryProvider.overrideWith((ref) => messages),

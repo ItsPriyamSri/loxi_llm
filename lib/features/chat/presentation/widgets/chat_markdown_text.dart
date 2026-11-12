@@ -24,13 +24,14 @@ class ChatMarkdownText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final animate = isStreaming && !MediaQuery.disableAnimationsOf(context);
     return GptMarkdown(
       data,
       style: style,
       maxLines: maxLines,
       overflow: overflow,
       animation:
-          isStreaming ? GptMarkdownAnimation.fade : GptMarkdownAnimation.none,
+          animate ? GptMarkdownAnimation.fade : GptMarkdownAnimation.none,
       isStreaming: isStreaming,
       revealFadeSeconds: 0.65,
       // No inline-only replacement in the new parser, and titles must not

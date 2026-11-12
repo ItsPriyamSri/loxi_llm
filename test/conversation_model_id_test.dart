@@ -5,16 +5,23 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:loki_llm/core/engine/inference_backend.dart';
+import 'package:loki_llm/core/platform/no_op_tts_service.dart';
 import 'package:loki_llm/core/providers/inference_provider.dart';
 import 'package:loki_llm/core/providers/shared_preferences_provider.dart';
+import 'package:loki_llm/core/providers/tts_provider.dart';
 import 'package:loki_llm/features/chat/data/conversation_repository.dart';
 import 'package:loki_llm/features/chat/data/message_repository.dart';
 import 'package:loki_llm/features/chat/domain/conversation.dart';
 import 'package:loki_llm/features/chat/domain/message.dart';
+import 'package:loki_llm/features/chat/domain/message_role.dart';
 import 'package:loki_llm/features/chat/presentation/chat_notifier.dart';
 import 'package:loki_llm/features/chat/presentation/chat_screen.dart';
+import 'package:loki_llm/features/chat/presentation/conversation_screen.dart';
 import 'package:loki_llm/features/chat/presentation/conversation_list_notifier.dart';
 import 'package:loki_llm/features/models/domain/model.dart';
+import 'package:loki_llm/features/models/domain/model_status.dart';
+import 'package:loki_llm/features/models/presentation/models_notifier.dart';
+import 'package:loki_llm/features/models/presentation/models_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const _phi3 = Model(
@@ -35,6 +42,8 @@ void main() {
       final container = ProviderContainer(
         overrides: [
           sharedPreferencesProvider.overrideWithValue(prefs),
+          ttsServiceProvider.overrideWithValue(NoOpTtsService()),
+          modelsNotifierProvider.overrideWith(_Catalog.new),
           conversationRepositoryProvider.overrideWith(
             (ref) => _MemoryConversations(),
           ),
@@ -79,12 +88,76 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('New Chat'));
+      await tester.tap(find.text('New chat'));
       await tester.pumpAndSettle();
 
       final stored = container.read(conversationRepositoryProvider).getAll();
       expect(stored, hasLength(1));
       expect(stored.single.modelId, _phi3.id);
+    });
+
+    testWidgets('the ready model hero opens a chat attributed to that model',
+        (tester) async {
+      final container =
+          await openContainer(backend: _ReadyBackend(), loaded: _phi3);
+      final router = GoRouter(
+        routes: [
+          GoRoute(path: '/', builder: (_, __) => const ModelsScreen()),
+          GoRoute(
+              path: '/chat/:id',
+              builder: (_, __) => const Scaffold(body: Text('Chat opened'))),
+        ],
+      );
+      addTearDown(router.dispose);
+      await tester.pumpWidget(UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp.router(routerConfig: router),
+      ));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Start a chat'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Chat opened'), findsOneWidget);
+      final chats = container.read(conversationRepositoryProvider).getAll();
+      expect(chats.single.modelId, _phi3.id);
+    });
+
+    testWidgets('Stop before the first token keeps the saved user turn',
+        (tester) async {
+      final container =
+          await openContainer(backend: _HoldBackend(), loaded: _phi3);
+      final id = container
+          .read(conversationListNotifierProvider.notifier)
+          .createConversation();
+      await tester.pumpWidget(UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(home: ConversationScreen(conversationId: id)),
+      ));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'Check the first token');
+      await tester.pump();
+      await tester.tap(find.byTooltip('Send message'));
+      // The thinking dots repeat until the first token, so the frame never
+      // settles; pump past the send instead.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(find.text('Thinking…'), findsOneWidget);
+      await tester.tap(find.byTooltip('Stop generating'));
+      await tester.runAsync(() => _idleChat(container, id));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Send message'), findsOneWidget);
+      expect(find.text('Thinking…'), findsNothing);
+      final messages =
+          container.read(messageRepositoryProvider).getMessages(id);
+      expect(
+          messages
+              .where((message) => message.role == MessageRole.user)
+              .single
+              .content,
+          'Check the first token');
+      expect(find.text('No reply generated. Try sending again.'), findsOneWidget);
+      expect(find.byTooltip('Read aloud'), findsNothing);
     });
 
     test('send stores the answering model when generation fails', () async {
@@ -133,6 +206,13 @@ Future<ChatState> _idleChat(ProviderContainer container, String id) async {
     await Future<void>.delayed(Duration.zero);
   }
   fail('chat did not finish');
+}
+
+class _Catalog extends ModelsNotifier {
+  @override
+  Future<List<Model>> build() async => [
+        _phi3.copyWith(status: ModelStatus.loaded, localPath: '/tmp/phi3.gguf'),
+      ];
 }
 
 class _FixedInference extends InferenceNotifier {

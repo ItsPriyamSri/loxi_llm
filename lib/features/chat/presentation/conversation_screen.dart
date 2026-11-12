@@ -1,16 +1,24 @@
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../../core/engine/inference_backend.dart';
 import '../../../core/providers/download_provider.dart';
 import '../../../core/providers/inference_provider.dart';
 import '../../../core/providers/tts_provider.dart';
 import '../../../core/services/tts_service.dart';
+import '../../../core/services/file_storage_service.dart';
+import '../../../core/platform/haptics.dart';
+import '../../../core/theme/prism_relay.dart';
+import '../../../core/widgets/prism_blocks.dart';
+import '../../../core/widgets/prism_icon.dart';
 import '../../agent/agent_model_support.dart';
+import '../../documents/presentation/documents_notifier.dart';
 import '../../models/domain/model.dart';
 import '../../settings/presentation/prompt_library_screen.dart';
 import '../../settings/presentation/settings_notifier.dart';
@@ -84,6 +92,13 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
 
   /// Read in initState. [dispose] cannot use `ref`.
   late final TtsService _tts;
+  late final FileStorageService _storage;
+  bool _following = true;
+  bool _newerBelow = false;
+  bool _submitting = false;
+  bool _stopRequested = false;
+  bool _pickingImage = false;
+  String? _sendError;
 
   /// Path to an image attached to the message being composed, if any. Copied
   /// into app storage so it survives independently of the picker's temp file.
@@ -95,38 +110,60 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
     _textController = TextEditingController();
     _scrollController = ScrollController();
     _tts = ref.read(ttsServiceProvider);
+    _storage = ref.read(fileStorageServiceProvider);
+    _scrollToBottom();
   }
 
   @override
   void dispose() {
+    // Leaving the chat ends read-aloud; nothing else on screen could stop
+    // it. Every callback that follows checks `mounted`.
     _tts.stop();
     _textController.dispose();
     _scrollController.dispose();
     if (_attachedImagePath != null) {
       // Fire-and-forget: dispose() can't be async. An unsent attachment
       // shouldn't outlive the screen it was picked on.
-      ref.read(fileStorageServiceProvider).deleteImage(_attachedImagePath!);
+      _storage.deleteImage(_attachedImagePath!);
     }
     super.dispose(); // MUST be last
   }
 
+  bool _onScroll(ScrollNotification event) {
+    if (event.depth != 0) return false;
+    final isUserScroll = event is UserScrollNotification ||
+        (event is ScrollUpdateNotification && event.dragDetails != null);
+    if (isUserScroll) {
+      final atLatest = event.metrics.extentAfter <= 56;
+      if (_following != atLatest || (atLatest && _newerBelow)) {
+        setState(() {
+          _following = atLatest;
+          if (atLatest) _newerBelow = false;
+        });
+      }
+    }
+    return false;
+  }
+
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-        );
-      }
+      if (!mounted || !_following || !_scrollController.hasClients) return;
+      final position = _scrollController.position;
+      if (position.extentAfter <= 1) return;
+      _scrollController.jumpTo(position.maxScrollExtent);
     });
   }
 
   Future<void> _sendMessage() async {
+    if (_submitting ||
+        ref.read(inferenceNotifierProvider).asData?.value == null) {
+      return;
+    }
     final rawText = _textController.text;
     final text = rawText.trim();
     final imagePath = _attachedImagePath;
     if (text.isEmpty && imagePath == null) return;
+    Haptics.commit();
     // Clear the composer immediately/optimistically, text and attachment
     // together, rather than waiting for send() to resolve — which for an
     // agent-mode turn can take a long time (it awaits the whole turn, not
@@ -144,7 +181,13 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
     // already went through, so putting the text/attachment back would risk
     // a near-duplicate resend. See [shouldRestoreComposerAfterSendError].
     _textController.clear();
-    setState(() => _attachedImagePath = null);
+    setState(() {
+      _attachedImagePath = null;
+      _submitting = true;
+      _following = true;
+      _newerBelow = false;
+      _sendError = null;
+    });
     try {
       await ref
           .read(chatNotifierProvider(widget.conversationId).notifier)
@@ -163,16 +206,19 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
         // above — nothing to retry, just scroll to it.
         _scrollToBottom();
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(shouldRestore ? 'Error: $e' : 'Message sent, but: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      setState(() {
+        _sendError = shouldRestore
+            ? 'Could not send the message. Your draft is still here.'
+            : 'Message saved, but the reply could not start.';
+      });
+    } finally {
+      if (mounted) setState(() => _submitting = false);
     }
   }
 
   Future<void> _pickImage() async {
+    if (_pickingImage) return;
+    setState(() => _pickingImage = true);
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.image,
@@ -181,7 +227,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
       final picked = result?.files.single;
       if (picked?.path == null || !mounted) return;
 
-      final storage = ref.read(fileStorageServiceProvider);
+      final storage = _storage;
       final filename =
           'img-${DateTime.now().millisecondsSinceEpoch}${_extensionOf(picked!)}';
       final destPath = await storage.getImagePath(filename);
@@ -189,14 +235,24 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
 
       // Replace any previously attached (unsent) image so it doesn't leak.
       final previous = _attachedImagePath;
-      if (mounted) setState(() => _attachedImagePath = destPath);
-      if (previous != null) await storage.deleteImage(previous);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not attach image: $e')),
-        );
+      if (!mounted) {
+        await storage.deleteImage(destPath);
+        return;
       }
+      if (!stillAllowsAttachment(
+        ref.read(inferenceNotifierProvider),
+        ref.read(inferenceNotifierProvider.notifier).loadedModel,
+      )) {
+        await storage.deleteImage(destPath);
+        _showSnack('The selected model does not support images.');
+        return;
+      }
+      setState(() => _attachedImagePath = destPath);
+      if (previous != null) await storage.deleteImage(previous);
+    } catch (_) {
+      _showSnack('Could not attach image.');
+    } finally {
+      if (mounted) setState(() => _pickingImage = false);
     }
   }
 
@@ -214,16 +270,40 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
   void _removeAttachedImage() {
     final stale = _attachedImagePath;
     setState(() => _attachedImagePath = null);
-    if (stale != null) ref.read(fileStorageServiceProvider).deleteImage(stale);
+    if (stale != null) _storage.deleteImage(stale);
   }
 
-  void _editSystemPrompt() {
+  Future<void> _openAddSheet({
+    required bool agentCapable,
+    required bool canAttachImage,
+  }) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      // Above the dock: the sheet and its scrim cover the whole screen.
+      useRootNavigator: true,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => _AttachSheet(
+        conversationId: widget.conversationId,
+        agentCapable: agentCapable,
+        canAttachImage: canAttachImage,
+        pickingImage: _pickingImage,
+        onPickImage: () {
+          Navigator.of(sheetContext).pop();
+          Haptics.selection();
+          _pickImage();
+        },
+      ),
+    );
+  }
+
+  Future<void> _editSystemPrompt() async {
     final conversation =
         ref.read(conversationRepositoryProvider).getById(widget.conversationId);
     if (conversation == null) return;
 
     final controller = TextEditingController(text: conversation.systemPrompt);
-    showDialog<void>(
+    final route = DialogRoute<void>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) {
@@ -240,10 +320,10 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                   children: [
                     TextField(
                       controller: controller,
-                      maxLines: 5,
+                      minLines: 1,
+                      maxLines: 6,
                       decoration: const InputDecoration(
-                        hintText: 'Enter system prompt (optional)',
-                        border: OutlineInputBorder(),
+                        hintText: 'Enter a system prompt',
                       ),
                     ),
                     if (prompts.isNotEmpty) ...[
@@ -289,7 +369,6 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                         controller.text,
                       );
                   Navigator.of(ctx).pop();
-                  controller.dispose();
                 },
                 child: const Text('Save'),
               ),
@@ -298,14 +377,16 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
         },
       ),
     );
+    await Navigator.of(context, rootNavigator: true).push(route);
+    await route.completed;
+    controller.dispose();
   }
 
   Future<void> _savePromptToLibrary(String body) async {
     final taken = ref.read(settingsNotifierProvider.notifier).savedPrompts();
     final name = await askPromptName(
       context,
-      nameTaken: (candidate) =>
-          taken.any((prompt) => prompt.name == candidate),
+      nameTaken: (candidate) => taken.any((prompt) => prompt.name == candidate),
     );
     if (!mounted || name == null) return;
     ref.read(settingsNotifierProvider.notifier).savePrompt(name, body);
@@ -366,6 +447,22 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
     await _tts.stop();
   }
 
+  Future<void> _stopGeneration() async {
+    if (_stopRequested) return;
+    Haptics.tap();
+    setState(() => _stopRequested = true);
+    try {
+      await Future.wait([
+        ref.read(chatNotifierProvider(widget.conversationId).notifier).stop(),
+        if (_speakingMessageId != null) _stopReadAloud(),
+      ]);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _stopRequested = false);
+      _showSnack('Could not stop generation.');
+    }
+  }
+
   Future<void> _toggleReadAloud(Message message) async {
     final tts = _tts;
     if (!tts.isSupported) {
@@ -406,461 +503,549 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
     }
   }
 
+  Widget _shortcuts({required bool centered}) {
+    const shortcuts = [
+      ('Explain', 'Explain the following in simple terms:\n'),
+      ('Summarize', 'Summarize the following in 3 bullet points:\n'),
+      ('Refine', 'Refine and improve the following text:\n'),
+      ('Translate', 'Translate the following to English:\n'),
+    ];
+    final actions = [
+      for (final (label, prompt) in shortcuts)
+        _ShortcutChip(
+          label: label,
+          onPressed: () {
+            Haptics.selection();
+            _textController.value = TextEditingValue(
+              text: prompt,
+              selection: TextSelection.collapsed(offset: prompt.length),
+            );
+          },
+        ),
+    ];
+    if (centered) {
+      return Wrap(
+        key: const ValueKey('centered-shortcuts'),
+        alignment: WrapAlignment.center,
+        spacing: 8,
+        runSpacing: 8,
+        children: actions,
+      );
+    }
+    return SingleChildScrollView(
+      key: const ValueKey('quick-shortcuts'),
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Row(spacing: 6, children: actions),
+    );
+  }
+
+  List<Widget> _blankHeader(ThemeData theme, String hint) => [
+        const PrismBrandMark(size: 46),
+        const SizedBox(height: 16),
+        Text(
+          "What's on your mind?",
+          textAlign: TextAlign.center,
+          style: theme.textTheme.displaySmall,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          hint,
+          textAlign: TextAlign.center,
+          style: theme.textTheme.bodyMedium
+              ?.copyWith(color: PrismRelay.inkSecondary),
+        ),
+        const SizedBox(height: 18),
+      ];
+
   @override
   Widget build(BuildContext context) {
-    final chatAsync = ref.watch(chatNotifierProvider(widget.conversationId));
+    final chatProvider = chatNotifierProvider(widget.conversationId);
+    final chatAsync = ref.watch(chatProvider);
     final backendAsync = ref.watch(inferenceNotifierProvider);
-    final conversation = ref
-        .watch(conversationRepositoryProvider)
-        .getById(widget.conversationId);
-    final conversations =
-        ref.watch(conversationListNotifierProvider).valueOrNull ?? [];
-    final currentConv =
-        conversations.where((c) => c.id == widget.conversationId).firstOrNull;
-    final isRagEnabled = currentConv?.ragEnabled ?? false;
-    final isToolsEnabled = currentConv?.toolsEnabled ?? false;
+    final repository = ref.watch(conversationRepositoryProvider);
+    final conversations = ref.watch(conversationListNotifierProvider);
+    final conversation = conversations.valueOrNull
+            ?.where((item) => item.id == widget.conversationId)
+            .firstOrNull ??
+        repository.getById(widget.conversationId);
+    final canNavigate = GoRouter.maybeOf(context) != null;
+    if (conversation == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Conversation')),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('This conversation is no longer available.'),
+              if (canNavigate)
+                TextButton(
+                    onPressed: () => context.go('/chat'),
+                    child: const Text('Back to chats')),
+            ],
+          ),
+        ),
+      );
+    }
+
     final loadedModel =
-        ref.watch(inferenceNotifierProvider.notifier).loadedModel;
-    final agentCapable = isAgentCapableModel(loadedModel?.id);
-    // Catalog data (isMultimodalModel) only says the model *should* support
-    // vision; backend.supportsVision is the native-verified layer (the mmproj
-    // actually loaded and reported vision support) — both must hold before
-    // the attach button appears.
+        ref.read(inferenceNotifierProvider.notifier).loadedModel;
+    final backend = backendAsync.asData?.value;
+    final ready = backend != null;
+    final agentCapable = ready && isAgentCapableModel(loadedModel?.id);
     final canAttachImage = loadedModel != null &&
         isMultimodalModel(loadedModel) &&
-        (backendAsync.valueOrNull?.supportsVision ?? false);
-
-    final isModelLoaded = backendAsync.valueOrNull != null;
-    final isStreaming = chatAsync.valueOrNull?.isStreaming ?? false;
+        (backend?.supportsVision ?? false);
+    final chat = chatAsync.valueOrNull;
+    final messages = chat?.messages ?? const <Message>[];
+    final streamingText = chat?.streamingText;
+    final isStreaming = chat?.isStreaming ?? false;
+    final blank = chat != null && messages.isEmpty && !isStreaming;
     ref.watch(settingsNotifierProvider);
     final savedPrompts =
         ref.read(settingsNotifierProvider.notifier).savedPrompts();
-    final exportConversation = conversation ?? currentConv;
+    final prompts = savedPrompts.take(6).toList();
+    final modeActions = ref.read(conversationListNotifierProvider.notifier);
+    final theme = Theme.of(context);
 
-    // The chat tab is kept alive in an IndexedStack, so switching to a
-    // non-vision model doesn't dispose this screen — drop any pending
-    // attachment rather than let it silently ride along on the next send.
-    // Only a path the composer still owns is deleted here: once send() has
-    // handed a path off (see _sendMessage), _attachedImagePath is already
-    // null, so an in-flight send's already-persisted image is untouched.
     ref.listen(inferenceNotifierProvider, (previous, next) {
       final model = ref.read(inferenceNotifierProvider.notifier).loadedModel;
-      if (stillAllowsAttachment(next, model) || _attachedImagePath == null) {
+      if (!stillAllowsAttachment(next, model) && _attachedImagePath != null) {
+        _removeAttachedImage();
+        _showSnack('Image removed. The selected model does not support it.');
+      }
+    });
+    ref.listen(chatProvider, (previous, next) {
+      final before = previous?.valueOrNull;
+      final after = next.valueOrNull;
+      if (after == null ||
+          (before?.messages.length == after.messages.length &&
+              before?.streamingText == after.streamingText)) {
         return;
       }
-      final stale = _attachedImagePath!;
-      setState(() => _attachedImagePath = null);
-      ref.read(fileStorageServiceProvider).deleteImage(stale);
-    });
-
-    // A failed generation leaves the chat usable (see failedGenerationState);
-    // tell the user once. The next send() starts with no error, so a repeat
-    // failure is shown again.
-    ref.listen(chatNotifierProvider(widget.conversationId), (previous, next) {
-      final error = next.valueOrNull?.error;
-      if (error != null && error != previous?.valueOrNull?.error) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(error), backgroundColor: Colors.red),
-        );
+      if (_stopRequested && before?.isStreaming == true && !after.isStreaming) {
+        setState(() => _stopRequested = false);
+        if (after.error == null) _showSnack('Generation stopped');
+      }
+      if (_following) {
+        _scrollToBottom();
+      } else {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || _following || !_scrollController.hasClients) return;
+          final below = _scrollController.position.extentAfter > 56;
+          if (_newerBelow != below) setState(() => _newerBelow = below);
+        });
       }
     });
 
+    final error = _sendError ?? chat?.error;
+    final showJump = !_following && _newerBelow;
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        title: ChatMarkdownText(
-          conversation?.title ?? 'Chat',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          inlineOnly: true,
+        toolbarHeight:
+            MediaQuery.textScalerOf(context).scale(16) > 23 ? 80 : 60,
+        titleSpacing: 0,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ChatMarkdownText(
+              conversation.title,
+              style: theme.textTheme.titleSmall,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              inlineOnly: true,
+            ),
+            if (ready && loadedModel != null)
+              Row(
+                children: [
+                  const PrismIcon(PrismGlyph.lock,
+                      size: 11, color: PrismRelay.violetDeep),
+                  const SizedBox(width: 4),
+                  Flexible(
+                    child: Text(
+                      '${loadedModel.name} · On device',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: PrismRelay.violetDeep,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 11.5,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+          ],
         ),
         actions: [
-          if (exportConversation != null)
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.ios_share_outlined),
-              tooltip: 'Export conversation',
-              onSelected: (value) {
-                final messages =
-                    chatAsync.valueOrNull?.messages ?? const <Message>[];
-                switch (value) {
-                  case 'share':
-                    _shareConversation(exportConversation, messages);
-                  case 'copy':
-                    _copyConversation(exportConversation, messages);
-                }
-              },
-              itemBuilder: (context) => const [
-                PopupMenuItem(
-                  value: 'share',
-                  child: ListTile(
-                    leading: Icon(Icons.share_outlined),
-                    title: Text('Share as Markdown'),
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'copy',
-                  child: ListTile(
-                    leading: Icon(Icons.copy_all_outlined),
-                    title: Text('Copy conversation'),
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                ),
-              ],
-            ),
-          IconButton(
-            icon: Icon(
-              isRagEnabled ? Icons.auto_awesome : Icons.auto_awesome_outlined,
-              color:
-                  isRagEnabled ? Theme.of(context).colorScheme.primary : null,
-            ),
-            tooltip: isRagEnabled
-                ? 'RAG mode on — tap to disable'
-                : 'RAG mode off — tap to enable',
-            onPressed: () => ref
-                .read(conversationListNotifierProvider.notifier)
-                .toggleRagEnabled(widget.conversationId),
-          ),
-          IconButton(
-            icon: Icon(
-              isToolsEnabled ? Icons.build : Icons.build_outlined,
-              color: isToolsEnabled && agentCapable
-                  ? Theme.of(context).colorScheme.primary
-                  : null,
-            ),
-            tooltip: !agentCapable
-                ? 'Tools require Phi-3 or Llama 3.2 3B (load a larger model)'
-                : isToolsEnabled
-                    ? 'Tools on — tap to disable'
-                    : 'Tools off — tap to enable',
-            onPressed: !agentCapable
-                ? () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          'Tool mode requires Phi-3 Mini or Llama 3.2 3B. '
-                          'Load a larger model from the Models tab.',
-                        ),
+          Stack(
+            alignment: Alignment.topRight,
+            clipBehavior: Clip.none,
+            children: [
+              IconButton(
+                tooltip: 'System prompt',
+                icon: const PrismIcon(PrismGlyph.book),
+                onPressed: _editSystemPrompt,
+              ),
+              if (conversation.systemPrompt.isNotEmpty)
+                const Positioned(
+                  top: 9,
+                  right: 9,
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: PrismRelay.accent,
+                        shape: BoxShape.circle,
                       ),
-                    );
-                  }
-                : () => ref
-                    .read(conversationListNotifierProvider.notifier)
-                    .toggleToolsEnabled(widget.conversationId),
+                      child: SizedBox.square(dimension: 8),
+                    ),
+                  ),
+                ),
+            ],
           ),
-          IconButton(
-            icon: const Icon(Icons.settings_outlined),
-            tooltip: 'System prompt',
-            onPressed: _editSystemPrompt,
+          PopupMenuButton<String>(
+            icon: const PrismIcon(PrismGlyph.more),
+            tooltip: 'Export conversation',
+            onSelected: (value) {
+              if (value == 'share') {
+                _shareConversation(conversation, messages);
+              } else {
+                _copyConversation(conversation, messages);
+              }
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(value: 'share', child: Text('Share as Markdown')),
+              PopupMenuItem(value: 'copy', child: Text('Copy conversation')),
+            ],
           ),
         ],
       ),
-      body: Column(
+      body: Stack(
         children: [
-          // Model status banner
-          if (isModelLoaded && loadedModel != null)
-            MaterialBanner(
-              content: Text('Using ${loadedModel.name}'),
-              leading: const Icon(Icons.memory_outlined),
-              actions: [
-                TextButton(
-                  onPressed: () =>
-                      ScaffoldMessenger.of(context).hideCurrentMaterialBanner(),
-                  child: const Text('Dismiss'),
+          const Positioned.fill(child: PrismAmbientWash()),
+          LayoutBuilder(
+            builder: (context, viewport) => Column(
+              children: [
+                if (!ready)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+                    child: PrismNotice(
+                      message: backendAsync.isLoading
+                          ? 'Loading model…'
+                          : backendAsync.hasError
+                              ? 'Could not load model'
+                              : 'No model loaded',
+                      failed: backendAsync.hasError,
+                      actionLabel: canNavigate && !backendAsync.isLoading
+                          ? 'Models'
+                          : null,
+                      onAction: () => context.go('/models'),
+                    ),
+                  ),
+                Expanded(
+                  child: chatAsync.when(
+                    loading: () =>
+                        const Center(child: CircularProgressIndicator()),
+                    error: (e, _) => ListView(
+                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                      children: [
+                        PrismErrorBanner(
+                          message: 'Could not open messages.',
+                          retryTooltip: 'Reload messages',
+                          onRetry: () => ref.invalidate(chatProvider),
+                        ),
+                      ],
+                    ),
+                    data: (_) {
+                      if (blank) {
+                        final showTemplates = conversation.systemPrompt.isEmpty &&
+                            prompts.isNotEmpty;
+                        return Center(
+                          child: SingleChildScrollView(
+                            padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
+                            child: AnimatedSwitcher(
+                              duration: MediaQuery.disableAnimationsOf(context)
+                                  ? Duration.zero
+                                  : PrismRelay.motion,
+                              switchInCurve: PrismRelay.curve,
+                              switchOutCurve: PrismRelay.curve,
+                              child: showTemplates
+                                  ? Column(
+                                      key: const ValueKey('saved-prompts'),
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        ..._blankHeader(theme,
+                                            'Pick a template, or ask Loki anything.'),
+                                        GridView.builder(
+                                          shrinkWrap: true,
+                                          physics:
+                                              const NeverScrollableScrollPhysics(),
+                                          // Tall enough for a two-line
+                                          // name at any text size.
+                                          gridDelegate:
+                                              SliverGridDelegateWithFixedCrossAxisCount(
+                                            crossAxisCount: 2,
+                                            mainAxisSpacing: 8,
+                                            crossAxisSpacing: 8,
+                                            mainAxisExtent: math.max(
+                                                48,
+                                                16 +
+                                                    MediaQuery.textScalerOf(
+                                                            context)
+                                                        .scale(30)),
+                                          ),
+                                          itemCount: prompts.length,
+                                          itemBuilder: (context, index) =>
+                                              _TemplateChip(
+                                            name: prompts[index].name,
+                                            onTap: () {
+                                              Haptics.selection();
+                                              modeActions.updateSystemPrompt(
+                                                  widget.conversationId,
+                                                  prompts[index].body);
+                                            },
+                                          ),
+                                        ),
+                                        const SizedBox(height: 6),
+                                        TextButton.icon(
+                                          key: const ValueKey('more-templates'),
+                                          onPressed: _editSystemPrompt,
+                                          iconAlignment: IconAlignment.end,
+                                          icon: const PrismIcon(PrismGlyph.chevron,
+                                              size: 18),
+                                          label: const Text('More'),
+                                        ),
+                                      ],
+                                    )
+                                  : Column(
+                                      key: const ValueKey('center-shortcuts'),
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        ..._blankHeader(theme,
+                                            'Short on words? Start with one of these.'),
+                                        _shortcuts(centered: true),
+                                      ],
+                                    ),
+                            ),
+                          ),
+                        );
+                      }
+                      return NotificationListener<ScrollNotification>(
+                        onNotification: _onScroll,
+                        child: ListView.builder(
+                          controller: _scrollController,
+                          padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                          itemCount:
+                              messages.length + (streamingText == null ? 0 : 1),
+                          itemBuilder: (context, index) {
+                            if (index == messages.length) {
+                              final text = streamingText!;
+                              return MessageBubble(
+                                content: text,
+                                isUser: false,
+                                isStreaming: true,
+                                child: text.isEmpty
+                                    ? const _ThinkingRow()
+                                    : null,
+                              );
+                            }
+                            final message = messages[index];
+                            final hasText = message.content.trim().isNotEmpty;
+                            final stats = replyStats(
+                              tokenCount: message.tokenCount,
+                              totalDurationMs: message.totalDurationMs,
+                              timeToFirstTokenMs: message.timeToFirstTokenMs,
+                              replyWaitMs: message.replyWaitMs,
+                            );
+                            return MessageBubble(
+                              content: message.content,
+                              imagePath: message.imagePath,
+                              isUser: message.role == MessageRole.user,
+                              isStreaming: false,
+                              onCopy: hasText
+                                  ? () => _copyText(message.content,
+                                      confirmation: 'Message copied')
+                                  : null,
+                              onReadAloud:
+                                  hasText && message.role == MessageRole.assistant
+                                      ? () => _toggleReadAloud(message)
+                                      : null,
+                              onStopReadAloud: _speakingMessageId == message.id
+                                  ? _stopReadAloud
+                                  : null,
+                              isSpeaking: _speakingMessageId == message.id &&
+                                  !_readAloudPaused,
+                              isPaused: _speakingMessageId == message.id &&
+                                  _readAloudPaused,
+                              speedLabel: stats?.speed,
+                              timeLabel: stats?.time,
+                              child: !hasText &&
+                                      message.role == MessageRole.assistant
+                                  ? const Text(
+                                      'No reply generated. Try sending again.',
+                                      style: TextStyle(
+                                          color: PrismRelay.inkSecondary),
+                                    )
+                                  : null,
+                            );
+                          },
+                        ),
+                      );
+                    },
+                  ),
                 ),
-              ],
-            )
-          else if (!isModelLoaded)
-            MaterialBanner(
-              content: const Text('No model loaded. Go to the Models tab.'),
-              leading: const Icon(Icons.warning_amber_outlined),
-              actions: [
-                TextButton(
-                  onPressed: () =>
-                      ScaffoldMessenger.of(context).hideCurrentMaterialBanner(),
-                  child: const Text('Dismiss'),
+                AnimatedSwitcher(
+                  duration: MediaQuery.disableAnimationsOf(context)
+                      ? Duration.zero
+                      : PrismRelay.motion,
+                  child: showJump
+                      ? Align(
+                          key: const ValueKey('jump-pill'),
+                          alignment: Alignment.center,
+                          child: Padding(
+                            padding: const EdgeInsets.only(bottom: 2),
+                            child: _JumpPill(
+                              onTap: () {
+                                Haptics.selection();
+                                setState(() {
+                                  _following = true;
+                                  _newerBelow = false;
+                                });
+                                _scrollToBottom();
+                              },
+                            ),
+                          ),
+                        )
+                      : const SizedBox.shrink(key: ValueKey('jump-pill-hidden')),
                 ),
-              ],
-            ),
-
-          // Message list
-          Expanded(
-            child: chatAsync.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(child: Text('Error: $e')),
-              data: (chatState) {
-                final messages = chatState.messages;
-                final streamingText = chatState.streamingText;
-
-                // Auto-scroll when messages change
-                if (messages.isNotEmpty || streamingText != null) {
-                  _scrollToBottom();
-                }
-
-                final choices = savedPrompts.take(6).toList();
-                if (messages.isEmpty &&
-                    streamingText == null &&
-                    (conversation?.systemPrompt ?? '').isEmpty &&
-                    choices.isNotEmpty) {
-                  return Center(
+                if (error != null)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: PrismErrorBanner(message: error),
+                  ),
+                if (blank &&
+                    conversation.systemPrompt.isEmpty &&
+                    prompts.isNotEmpty &&
+                    !isStreaming &&
+                    // The shell and this Scaffold consume the keyboard
+                    // inset, so ask the view whether the keyboard is up.
+                    View.of(context).viewInsets.bottom == 0)
+                  _shortcuts(centered: false),
+                SafeArea(
+                  top: false,
+                  minimum: const EdgeInsets.fromLTRB(10, 4, 10, 8),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: PrismRelay.surface,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: PrismRelay.lilacBorder, width: 1.4),
+                      boxShadow: PrismRelay.shadowRaised,
+                    ),
                     child: Padding(
-                      padding: const EdgeInsets.all(24),
+                      padding: const EdgeInsets.all(6),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            'Start with a saved prompt',
-                            style: Theme.of(context).textTheme.titleMedium,
-                          ),
-                          const SizedBox(height: 12),
-                          for (var start = 0;
-                              start < choices.length;
-                              start += 3)
+                          if (_attachedImagePath != null)
                             Padding(
-                              padding: const EdgeInsets.only(bottom: 8),
+                              padding:
+                                  const EdgeInsetsDirectional.only(start: 12),
                               child: Row(
                                 children: [
-                                  for (var column = 0; column < 3; column++)
-                                    Expanded(
-                                      child: start + column < choices.length
-                                          ? Padding(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                horizontal: 4,
-                                              ),
-                                              child: LayoutBuilder(
-                                                builder:
-                                                    (context, constraints) {
-                                                  final prompt =
-                                                      choices[start + column];
-                                                  return ActionChip(
-                                                    label: ConstrainedBox(
-                                                      constraints:
-                                                          BoxConstraints(
-                                                        maxWidth: constraints
-                                                                    .maxWidth <
-                                                                24
-                                                            ? 0
-                                                            : constraints
-                                                                    .maxWidth -
-                                                                24,
-                                                      ),
-                                                      child: Text(
-                                                        prompt.name,
-                                                        maxLines: 1,
-                                                        overflow: TextOverflow
-                                                            .ellipsis,
-                                                        textAlign:
-                                                            TextAlign.center,
-                                                      ),
-                                                    ),
-                                                    onPressed: () => ref
-                                                        .read(
-                                                            conversationListNotifierProvider
-                                                                .notifier)
-                                                        .updateSystemPrompt(
-                                                          widget.conversationId,
-                                                          prompt.body,
-                                                        ),
-                                                  );
-                                                },
-                                              ),
-                                            )
-                                          : const SizedBox.shrink(),
-                                    ),
+                                  ImageAttachmentThumbnail(
+                                      path: _attachedImagePath!,
+                                      size: 64,
+                                      borderRadius: 8),
+                                  IconButton(
+                                    icon: const PrismIcon(PrismGlyph.close),
+                                    tooltip: 'Remove image',
+                                    onPressed: _removeAttachedImage,
+                                  ),
                                 ],
                               ),
                             ),
-                          TextButton(
-                            onPressed: _editSystemPrompt,
-                            child: const Text('More'),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              IconButton(
+                                key: const ValueKey('add-to-message'),
+                                icon: const PrismIcon(PrismGlyph.plus,
+                                    color: PrismRelay.inkSecondary),
+                                tooltip: 'Add to message',
+                                onPressed: () {
+                                  Haptics.selection();
+                                  _openAddSheet(
+                                    agentCapable: agentCapable,
+                                    canAttachImage: canAttachImage,
+                                  );
+                                },
+                              ),
+                              Expanded(
+                                child: TextField(
+                                  controller: _textController,
+                                  decoration: const InputDecoration(
+                                    hintText: 'Message Loki',
+                                    hintMaxLines: 1,
+                                    filled: false,
+                                    border: InputBorder.none,
+                                    enabledBorder: InputBorder.none,
+                                    focusedBorder: InputBorder.none,
+                                    contentPadding: EdgeInsets.symmetric(
+                                        horizontal: 6, vertical: 10),
+                                  ),
+                                  minLines: 1,
+                                  maxLines: viewport.maxHeight < 380 ? 2 : 3,
+                                  onSubmitted:
+                                      ready && !isStreaming && !_submitting
+                                          ? (_) => _sendMessage()
+                                          : null,
+                                ),
+                              ),
+                              ValueListenableBuilder<TextEditingValue>(
+                                valueListenable: _textController,
+                                builder: (_, value, __) => IconButton.filled(
+                                  key: const ValueKey('send-stop'),
+                                  tooltip: isStreaming
+                                      ? _stopRequested
+                                          ? 'Stopping generation'
+                                          : 'Stop generating'
+                                      : 'Send message',
+                                  style: IconButton.styleFrom(
+                                    minimumSize: const Size.square(48),
+                                    backgroundColor: isStreaming
+                                        ? PrismRelay.violetDeep
+                                        : PrismRelay.accent,
+                                    foregroundColor: PrismRelay.surface,
+                                    disabledBackgroundColor: PrismRelay.lilac,
+                                    disabledForegroundColor:
+                                        PrismRelay.violetDeep,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(13),
+                                    ),
+                                  ),
+                                  icon: PrismIcon(isStreaming
+                                      ? PrismGlyph.stop
+                                      : PrismGlyph.send),
+                                  onPressed: isStreaming
+                                      ? _stopRequested
+                                          ? null
+                                          : _stopGeneration
+                                      : ready &&
+                                              !_submitting &&
+                                              (value.text.trim().isNotEmpty ||
+                                                  _attachedImagePath != null)
+                                          ? _sendMessage
+                                          : null,
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
                     ),
-                  );
-                }
-
-                return ListView.builder(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.all(16),
-                  itemCount: messages.length + (streamingText != null ? 1 : 0),
-                  itemBuilder: (context, index) {
-                    // Streaming bubble at end
-                    if (index == messages.length && streamingText != null) {
-                      // Before the first token arrives, show an animated
-                      // "thinking" indicator so the user knows the model is
-                      // working (time-to-first-token can be significant).
-                      if (streamingText.isEmpty) {
-                        return MessageBubble(
-                          isUser: false,
-                          isStreaming: true,
-                          child: _TypingIndicator(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSecondaryContainer,
-                          ),
-                        );
-                      }
-                      return MessageBubble(
-                        content: streamingText,
-                        isUser: false,
-                        isStreaming: true,
-                      );
-                    }
-                    final msg = messages[index];
-                    final stats = replyStats(
-                      tokenCount: msg.tokenCount,
-                      totalDurationMs: msg.totalDurationMs,
-                      timeToFirstTokenMs: msg.timeToFirstTokenMs,
-                      replyWaitMs: msg.replyWaitMs,
-                    );
-                    return MessageBubble(
-                      content: msg.content,
-                      imagePath: msg.imagePath,
-                      isUser: msg.role == MessageRole.user,
-                      isStreaming: false,
-                      onCopy: () => _copyText(
-                        msg.content,
-                        confirmation: 'Message copied',
-                      ),
-                      onReadAloud: msg.role == MessageRole.assistant
-                          ? () => _toggleReadAloud(msg)
-                          : null,
-                      onStopReadAloud:
-                          _speakingMessageId == msg.id ? _stopReadAloud : null,
-                      isSpeaking:
-                          _speakingMessageId == msg.id && !_readAloudPaused,
-                      isPaused:
-                          _speakingMessageId == msg.id && _readAloudPaused,
-                      speedLabel: stats?.speed,
-                      timeLabel: stats?.time,
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-
-          // Quick task shortcut chips
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            child: Row(
-              children: [
-                for (final entry in const [
-                  ('Translate', 'Translate the following to English:\n'),
-                  ('Refine', 'Refine and improve the following text:\n'),
-                  (
-                    'Summarize',
-                    'Summarize the following in 3 bullet points:\n'
                   ),
-                  ('Explain', 'Explain the following in simple terms:\n'),
-                ])
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: ActionChip(
-                      label: Text(entry.$1),
-                      onPressed: () {
-                        _textController.text = entry.$2;
-                        _textController.selection = TextSelection.fromPosition(
-                          TextPosition(offset: _textController.text.length),
-                        );
-                      },
-                    ),
-                  ),
-              ],
-            ),
-          ),
-
-          // Text input
-          Container(
-            padding: const EdgeInsets.fromLTRB(16, 8, 8, 16),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface,
-              border: Border(
-                top: BorderSide(color: Theme.of(context).dividerColor),
-              ),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (_attachedImagePath != null)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        ImageAttachmentThumbnail(
-                          path: _attachedImagePath!,
-                          size: 64,
-                          borderRadius: 8,
-                        ),
-                        Positioned(
-                          top: -8,
-                          right: -8,
-                          child: IconButton(
-                            icon: const Icon(Icons.cancel, size: 20),
-                            tooltip: 'Remove image',
-                            visualDensity: VisualDensity.compact,
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(),
-                            onPressed: _removeAttachedImage,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.image_outlined),
-                      tooltip: canAttachImage
-                          ? 'Attach image'
-                          : 'Attaching images requires a vision-capable '
-                              'model (e.g. Gemma 4)',
-                      onPressed: canAttachImage ? _pickImage : null,
-                    ),
-                    Expanded(
-                      child: TextField(
-                        controller: _textController,
-                        decoration: const InputDecoration(
-                          hintText: 'Type a message...',
-                          border: OutlineInputBorder(),
-                          contentPadding:
-                              EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        ),
-                        minLines: 1,
-                        maxLines: 4,
-                        // Mirror the Send/Stop button below: Enter must not
-                        // fire a second send() while one is already
-                        // streaming, the same gate `isModelLoaded` applies
-                        // to the button's onPressed.
-                        onSubmitted: isStreaming ? null : (_) => _sendMessage(),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    // While streaming, the Send button becomes a Stop button
-                    // that halts generation and keeps the partial reply.
-                    if (isStreaming)
-                      IconButton.filled(
-                        icon: const Icon(Icons.stop),
-                        tooltip: 'Stop generating',
-                        onPressed: () {
-                          _stopReadAloud();
-                          ref
-                              .read(chatNotifierProvider(widget.conversationId)
-                                  .notifier)
-                              .stop();
-                        },
-                      )
-                    else
-                      IconButton.filled(
-                        icon: const Icon(Icons.send),
-                        onPressed: isModelLoaded ? _sendMessage : null,
-                      ),
-                  ],
                 ),
               ],
             ),
@@ -871,75 +1056,419 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
   }
 }
 
-/// Animated "model is thinking" indicator: three dots that pulse in sequence.
-///
-/// Shown in the assistant bubble during the gap between sending a prompt and
-/// the first streamed token, so the UI never looks frozen.
-class _TypingIndicator extends StatefulWidget {
-  const _TypingIndicator({required this.color});
+/// Compact shortcut chip: in a row above the composer, or centered on a
+/// blank chat when no saved prompts are offered.
+class _ShortcutChip extends StatelessWidget {
+  const _ShortcutChip({required this.label, required this.onPressed});
 
-  final Color color;
+  final String label;
+  final VoidCallback onPressed;
 
   @override
-  State<_TypingIndicator> createState() => _TypingIndicatorState();
+  Widget build(BuildContext context) {
+    return Material(
+      type: MaterialType.transparency,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(10),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 48, minWidth: 48),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const PrismIcon(PrismGlyph.spark,
+                    size: 13, color: PrismRelay.plum),
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: PrismRelay.violetDeep,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12.5,
+                      ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
-class _TypingIndicatorState extends State<_TypingIndicator>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
+/// One cell of the 2 x 3 starter-template grid on the blank new-chat page.
+class _TemplateChip extends StatelessWidget {
+  const _TemplateChip({required this.name, required this.onTap});
 
-  static const _dotCount = 3;
-  static const _dotSize = 7.0;
+  final String name;
+  final VoidCallback onTap;
 
   @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1100),
-    )..repeat();
+  Widget build(BuildContext context) {
+    return Material(
+      type: MaterialType.transparency,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 48),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: PrismRelay.surface,
+              borderRadius: BorderRadius.circular(13),
+              border: Border.all(color: PrismRelay.lilacBorder),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                children: [
+                  const PrismIcon(PrismGlyph.book,
+                      size: 15, color: PrismRelay.plum),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 12.5,
+                            height: 1.2,
+                            color: PrismRelay.ink,
+                          ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Floating "Jump to latest" pill shown while the user reads older turns.
+class _JumpPill extends StatelessWidget {
+  const _JumpPill({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      type: MaterialType.transparency,
+      borderRadius: BorderRadius.circular(19),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(19),
+        child: Container(
+          height: 38,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            color: PrismRelay.surface,
+            borderRadius: BorderRadius.circular(19),
+            border: Border.all(color: PrismRelay.lineStrong),
+            boxShadow: PrismRelay.shadowRaised,
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              PrismIcon(PrismGlyph.down, size: 15, color: PrismRelay.violetDeep),
+              SizedBox(width: 7),
+              Text(
+                'Jump to latest',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w800,
+                  color: PrismRelay.violetDeep,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Waiting-on-first-token row: three wave dots and a label, never a spinner
+/// over text. Reduced motion renders the static label.
+class _ThinkingRow extends StatefulWidget {
+  const _ThinkingRow();
+
+  @override
+  State<_ThinkingRow> createState() => _ThinkingRowState();
+}
+
+class _ThinkingRowState extends State<_ThinkingRow>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _clock = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _clock.stop();
+    } else if (!_clock.isAnimating) {
+      _clock.repeat();
+    }
   }
 
   @override
   void dispose() {
-    _controller.dispose();
-    super.dispose(); // MUST be last
+    _clock.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: _dotSize * 2,
-      child: AnimatedBuilder(
-        animation: _controller,
-        builder: (context, _) {
-          return Row(
-            mainAxisSize: MainAxisSize.min,
-            children: List.generate(_dotCount, (i) {
-              // Stagger each dot's phase so the pulse travels left-to-right.
-              final phase = (_controller.value - i * 0.18) % 1.0;
-              // Triangle wave: 0 -> 1 -> 0 across the phase.
-              final wave = (1 - (2 * phase - 1).abs()).clamp(0.0, 1.0);
-              return Padding(
-                padding: EdgeInsets.only(right: i < _dotCount - 1 ? 5 : 0),
-                child: Transform.translate(
-                  offset: Offset(0, -3 * wave),
-                  child: Opacity(
-                    opacity: 0.35 + 0.65 * wave,
-                    child: Container(
-                      width: _dotSize,
-                      height: _dotSize,
-                      decoration: BoxDecoration(
-                        color: widget.color,
-                        shape: BoxShape.circle,
-                      ),
+    final label = Theme.of(context).textTheme.bodyMedium?.copyWith(
+          color: PrismRelay.inkSecondary,
+          fontWeight: FontWeight.w600,
+        );
+    final reduce = MediaQuery.disableAnimationsOf(context);
+    return Semantics(
+      liveRegion: true,
+      label: 'Thinking…',
+      child: ExcludeSemantics(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 30,
+              child: reduce
+                  ? const _Dots(phase: 0)
+                  : AnimatedBuilder(
+                      animation: _clock,
+                      builder: (_, __) => _Dots(phase: _clock.value),
+                    ),
+            ),
+            const SizedBox(width: 8),
+            Text('Thinking…', style: label),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Dots extends StatelessWidget {
+  const _Dots({required this.phase});
+
+  final double phase;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        for (var i = 0; i < 3; i++)
+          _Dot(wave: Curves.easeInOut.transform((phase + i * .18) % 1.0)),
+      ],
+    );
+  }
+}
+
+class _Dot extends StatelessWidget {
+  const _Dot({required this.wave});
+
+  /// 0 resting → 1 crest.
+  final double wave;
+
+  @override
+  Widget build(BuildContext context) {
+    final lift = wave < .5 ? wave * 2 : (1 - wave) * 2;
+    return Transform.translate(
+      offset: Offset(0, -3 * lift),
+      child: Opacity(
+        opacity: .35 + .65 * lift,
+        child: const DecoratedBox(
+          decoration: BoxDecoration(
+            color: PrismRelay.accent,
+            shape: BoxShape.circle,
+          ),
+          child: SizedBox.square(dimension: 6),
+        ),
+      ),
+    );
+  }
+}
+
+/// The "+" sheet: one place for everything that is not typed text —
+/// attaching a photo, per-chat Documents and Tools. Tools the current model
+/// cannot call are shown greyed and stay unclickable.
+class _AttachSheet extends ConsumerWidget {
+  const _AttachSheet({
+    required this.conversationId,
+    required this.agentCapable,
+    required this.canAttachImage,
+    required this.pickingImage,
+    required this.onPickImage,
+  });
+
+  final String conversationId;
+  final bool agentCapable;
+  final bool canAttachImage;
+  final bool pickingImage;
+  final VoidCallback onPickImage;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final conversations = ref.watch(conversationListNotifierProvider);
+    final conversation = conversations.valueOrNull
+        ?.where((item) => item.id == conversationId)
+        .firstOrNull;
+    final rag = conversation?.ragEnabled ?? false;
+    final tools = conversation?.toolsEnabled ?? false;
+    final actions = ref.read(conversationListNotifierProvider.notifier);
+    final documentCount =
+        ref.watch(documentsNotifierProvider).valueOrNull?.length;
+
+    return SafeArea(
+      top: false,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(12, 2, 12, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 0, 8, 10),
+              child: Text('Add to this message',
+                  style: Theme.of(context).textTheme.headlineSmall),
+            ),
+            _AttachRow(
+              glyph: PrismGlyph.image,
+              tile: PrismRelay.lilacSoft,
+              tileInk: PrismRelay.plum,
+              title: 'Attach an image',
+              subtitle: canAttachImage
+                  ? 'For the vision model loaded on this phone'
+                  : 'Needs a vision-capable model',
+              enabled: canAttachImage && !pickingImage,
+              onTap: onPickImage,
+            ),
+            _AttachRow(
+              glyph: PrismGlyph.file,
+              tile: PrismRelay.mintSurface,
+              tileInk: PrismRelay.greenInk,
+              title: 'Documents',
+              subtitle: documentCount == 0
+                  ? 'Import a document in Documents first'
+                  : 'Answers use your imported documents',
+              enabled: true,
+              switchedOn: rag,
+              onTap: () {
+                Haptics.selection();
+                actions.toggleRagEnabled(conversationId);
+              },
+            ),
+            _AttachRow(
+              glyph: PrismGlyph.tools,
+              tile: PrismRelay.peachSurface,
+              tileInk: PrismRelay.amberInk,
+              title: 'Tools',
+              subtitle: agentCapable
+                  ? 'Loki may call your allowed tools'
+                  : 'This model cannot call tools. Load a larger one.',
+              enabled: agentCapable,
+              switchedOn: agentCapable && tools,
+              onTap: () {
+                Haptics.selection();
+                actions.toggleToolsEnabled(conversationId);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AttachRow extends StatelessWidget {
+  const _AttachRow({
+    required this.glyph,
+    required this.tile,
+    required this.tileInk,
+    required this.title,
+    required this.subtitle,
+    required this.enabled,
+    required this.onTap,
+    this.switchedOn,
+  });
+
+  final PrismGlyph glyph;
+  final Color tile;
+  final Color tileInk;
+  final String title;
+  final String subtitle;
+
+  /// A disabled row is dimmed and ignores taps.
+  final bool enabled;
+  final VoidCallback onTap;
+
+  /// Shows a switch in this state; null for a plain action row.
+  final bool? switchedOn;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return MergeSemantics(
+      child: Opacity(
+        opacity: enabled ? 1 : .42,
+        child: InkWell(
+          onTap: enabled ? onTap : null,
+          borderRadius: BorderRadius.circular(14),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 62),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(
+                children: [
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: tile,
+                      borderRadius: BorderRadius.circular(11),
+                    ),
+                    child: SizedBox.square(
+                      dimension: 38,
+                      child: PrismIcon(glyph, size: 18, color: tileInk),
                     ),
                   ),
-                ),
-              );
-            }),
-          );
-        },
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(title, style: theme.textTheme.titleSmall),
+                        Text(subtitle, style: theme.textTheme.bodySmall),
+                      ],
+                    ),
+                  ),
+                  if (switchedOn != null) ...[
+                    const SizedBox(width: 8),
+                    // The whole row is the tap target; the switch only shows
+                    // the state.
+                    IgnorePointer(
+                      child: Switch(
+                        value: switchedOn!,
+                        onChanged: enabled ? (_) {} : null,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

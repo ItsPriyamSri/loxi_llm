@@ -62,11 +62,22 @@ void main() {
       expect(stale, isEmpty);
     });
 
-    test('leaves available/downloading/downloaded/error models alone', () {
+    test('resets a cut-off or failed download with no file to available', () {
+      final stale = staleModelsToReconcile([
+        _model('a', ModelStatus.downloading, localPath: null)
+            .copyWith(downloadProgress: .4),
+        _model('b', ModelStatus.error, localPath: null),
+      ]);
+      expect(stale.map((m) => m.status),
+          [ModelStatus.available, ModelStatus.available]);
+      expect(stale.first.downloadProgress, 0);
+    });
+
+    test('leaves available/downloaded models and a failed load alone', () {
       final stale = staleModelsToReconcile([
         _model('a', ModelStatus.available),
-        _model('b', ModelStatus.downloading),
         _model('c', ModelStatus.downloaded),
+        // A file on disk: the load failed, not the download.
         _model('d', ModelStatus.error),
       ]);
       expect(stale, isEmpty);
@@ -107,6 +118,41 @@ void main() {
         const ModelAlreadyLoadingException().toString(),
         'Another model is already loading',
       );
+    });
+  });
+
+  group('shouldPublishDownloadProgress', () {
+    final start = DateTime(2026, 11, 12, 12);
+
+    test('publishes the first tick', () {
+      expect(
+          shouldPublishDownloadProgress(
+              progress: .01, now: start, lastPublished: null),
+          isTrue);
+    });
+
+    test('drops ticks inside the interval and publishes after it', () {
+      expect(
+          shouldPublishDownloadProgress(
+              progress: .2,
+              now: start.add(const Duration(milliseconds: 40)),
+              lastPublished: start),
+          isFalse);
+      expect(
+          shouldPublishDownloadProgress(
+              progress: .2,
+              now: start.add(kDownloadProgressInterval),
+              lastPublished: start),
+          isTrue);
+    });
+
+    test('always publishes completion', () {
+      expect(
+          shouldPublishDownloadProgress(
+              progress: 1.0,
+              now: start.add(const Duration(milliseconds: 1)),
+              lastPublished: start),
+          isTrue);
     });
   });
 }

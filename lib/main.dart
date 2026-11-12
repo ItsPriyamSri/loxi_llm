@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'core/database/objectbox_store.dart';
@@ -10,11 +11,20 @@ import 'core/logging/model_io_logger.dart';
 import 'core/providers/objectbox_provider.dart';
 import 'core/providers/shared_preferences_provider.dart';
 import 'core/router/app_router.dart';
+import 'core/theme/prism_relay.dart';
 
 void main() async {
   // Run inside a guarded zone so uncaught async errors reach AppLogger.
   await runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
+
+    // The bundled font's OFL licence, listed with the package licences.
+    LicenseRegistry.addLicense(() async* {
+      yield LicenseEntryWithLineBreaks(
+        const ['Plus Jakarta Sans'],
+        await rootBundle.loadString('assets/fonts/OFL.txt'),
+      );
+    });
 
     await AppLogger.instance.init();
     await ModelIoLogger.instance.init();
@@ -67,15 +77,7 @@ class MyApp extends ConsumerWidget {
       routerConfig: router,
       title: 'Loki LLM',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        useMaterial3: true,
-        // Use the classic ripple instead of the default Material 3 InkSparkle,
-        // which relies on shaders/ink_sparkle.frag — a fragment shader that
-        // fails to decode in the Flutter 3.41.0 test environment (and has had
-        // load issues on some devices). Visually near-identical.
-        splashFactory: InkRipple.splashFactory,
-      ),
+      theme: PrismRelay.light,
     );
   }
 }

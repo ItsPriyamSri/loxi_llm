@@ -12,6 +12,14 @@ import '../../settings/presentation/settings_notifier.dart';
 
 part 'documents_notifier.g.dart';
 
+/// The picked file is over the 10 MB import limit.
+class DocumentTooLargeException implements Exception {
+  const DocumentTooLargeException();
+
+  @override
+  String toString() => 'File too large (max 10 MB)';
+}
+
 @riverpod
 class DocumentsNotifier extends _$DocumentsNotifier {
   @override
@@ -40,7 +48,7 @@ class DocumentsNotifier extends _$DocumentsNotifier {
       final fileSize = await File(filePath).length();
       if (fileSize > 10 * 1024 * 1024) {
         state = AsyncError(
-          'File too large (max 10 MB)',
+          const DocumentTooLargeException(),
           StackTrace.current,
         );
         return;

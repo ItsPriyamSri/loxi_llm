@@ -15,6 +15,17 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Finished replies show the model speed and how long the turn took, on the same row as copy and read-aloud ([#99](https://github.com/LucknowAI/loki_llm/issues/99))
 - Agent tool: `model_info` — reports the loaded model, backend, context size, agent capability, and per-chat RAG flag ([#16](https://github.com/LucknowAI/loxi_llm/issues/16))
 
+### Changed
+
+- New light interface, Prism Relay. Plus Jakarta Sans, Lucide icons, a floating three-tab dock, soft page transitions that respect reduced motion, and haptic feedback on key actions.
+- One welcome page with a single Get started action.
+- Models, Chat and Documents open with the same 200 dp hero tile. On Models it follows the chosen model through download, load, ready and errors, says why a load failed, and has Start a chat and Unload. A full-screen page shows while a model loads.
+- A new chat opens on your saved prompts as a 2×3 grid, with Explain, Summarize, Refine and Translate as chips above the composer. More opens the System Prompt dialog. The system prompt button sits in the title bar and shows a dot when a prompt is set.
+- The + button in the composer opens one sheet for images, Documents and Tools. Options the loaded model cannot use stay visible but greyed out.
+- Replies show speed and time next to icon-only copy and read-aloud. Copy turns into a check for a moment.
+- The chat list is grouped by Today, Yesterday, This week and older, with a New chat button. Chats start titled "New chat".
+- Settings keeps chunk size, results per question and read-aloud speed as inline sliders, adds a "How Loki works" page, and asks before clearing logs.
+
 ### Fixed
 
 - The chat list names the model that answered and when the chat was updated, instead of "No model" on a plain row ([#103](https://github.com/LucknowAI/loki_llm/issues/103))
@@ -22,6 +33,12 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - A chat no longer stays locked with a Stop button after a generation timeout or error; the conversation stays usable and a message explains what happened ([#106](https://github.com/LucknowAI/loki_llm/issues/106))
 - The "model loaded" snackbar no longer stays on screen until dismissed ([#101](https://github.com/LucknowAI/loki_llm/issues/101))
 - Chat reaches the first token faster on Android. The engine uses the ARM CPU instructions the phone supports, and a follow-up turn reuses the part of the conversation it already read ([#108](https://github.com/LucknowAI/loki_llm/issues/108))
+- Stopping a download no longer marks the model as a failed download
+- The log viewer's "All" filter clears the level filter again
+- A download that was cut off or failed shows as available again the next time the app opens, instead of staying marked as failed. Downloading again resumes from the partial file
+- At large text the dock labels no longer wrap and the hero buttons no longer cut off
+- The + sheet in a chat covers the dock, and the shortcut chips hide while the keyboard is open
+- Delete confirmations say what will be removed, and the delete button is red
 
 ## [1.2.0] — 2026-09-16
 

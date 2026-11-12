@@ -200,7 +200,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.text('Load a model from the Models tab\nto start chatting.'),
+        find.text('Load a model to chat'),
         findsOneWidget,
       );
     });

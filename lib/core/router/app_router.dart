@@ -13,8 +13,42 @@ import '../../features/settings/presentation/settings_screen.dart';
 import '../logging/log_viewer_screen.dart';
 import '../logging/model_io_log_screen.dart';
 import '../providers/shared_preferences_provider.dart';
+import '../theme/prism_relay.dart';
+import '../widgets/prism_dock.dart';
 
 part 'app_router.g.dart';
+
+/// Shared transition for pushed surfaces: a soft fade with a short
+/// directional drift. Reduced-motion users get the page with no movement.
+CustomTransitionPage<void> _pushPage(
+  GoRouterState state,
+  Widget child, {
+  Offset begin = const Offset(0, 0.045),
+}) {
+  return CustomTransitionPage<void>(
+    key: state.pageKey,
+    child: child,
+    transitionDuration: const Duration(milliseconds: 260),
+    reverseTransitionDuration: const Duration(milliseconds: 210),
+    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      if (MediaQuery.disableAnimationsOf(context)) return child;
+      final curved = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutCubic,
+        reverseCurve: Curves.easeInCubic,
+      );
+      // A short fade: the page is opaque for most of the move, so two
+      // pages are never visible through each other for long.
+      return FadeTransition(
+        opacity: CurvedAnimation(parent: curved, curve: const Interval(0, .5)),
+        child: SlideTransition(
+          position: Tween(begin: begin, end: Offset.zero).animate(curved),
+          child: child,
+        ),
+      );
+    },
+  );
+}
 
 @Riverpod(keepAlive: true)
 GoRouter appRouter(Ref ref) {
@@ -23,30 +57,48 @@ GoRouter appRouter(Ref ref) {
 
   return GoRouter(
     initialLocation: sawOnboarding ? '/models' : '/onboarding',
+    errorBuilder: (context, state) => Scaffold(
+      appBar: AppBar(title: const Text('Page unavailable')),
+      body: Center(
+        child: FilledButton(
+          onPressed: () => context.go(
+            prefs.getBool('onboarding_complete') == true
+                ? '/models'
+                : '/onboarding',
+          ),
+          child: const Text('Return to Loki'),
+        ),
+      ),
+    ),
     routes: [
       GoRoute(
         path: '/onboarding',
-        builder: (context, state) => const OnboardingScreen(),
+        pageBuilder: (context, state) =>
+            _pushPage(state, const OnboardingScreen(), begin: Offset.zero),
       ),
       GoRoute(
         path: '/settings',
-        builder: (context, state) => const SettingsScreen(),
+        pageBuilder: (context, state) =>
+            _pushPage(state, const SettingsScreen()),
       ),
       GoRoute(
         path: '/generation',
-        builder: (context, state) => const GenerationSettingsScreen(),
+        pageBuilder: (context, state) =>
+            _pushPage(state, const GenerationSettingsScreen()),
       ),
       GoRoute(
         path: '/prompts',
-        builder: (context, state) => const PromptLibraryScreen(),
+        pageBuilder: (context, state) =>
+            _pushPage(state, const PromptLibraryScreen()),
       ),
       GoRoute(
         path: '/logs',
-        builder: (context, state) => const LogViewerScreen(),
+        pageBuilder: (context, state) => _pushPage(state, const LogViewerScreen()),
       ),
       GoRoute(
         path: '/model-io',
-        builder: (context, state) => const ModelIoLogScreen(),
+        pageBuilder: (context, state) =>
+            _pushPage(state, const ModelIoLogScreen()),
       ),
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) =>
@@ -68,8 +120,12 @@ GoRouter appRouter(Ref ref) {
                 routes: [
                   GoRoute(
                     path: ':conversationId',
-                    builder: (context, state) => ConversationScreen(
-                      conversationId: state.pathParameters['conversationId']!,
+                    pageBuilder: (context, state) => _pushPage(
+                      state,
+                      ConversationScreen(
+                        conversationId: state.pathParameters['conversationId']!,
+                      ),
+                      begin: const Offset(0.12, 0),
                     ),
                   ),
                 ],
@@ -98,30 +154,14 @@ class _ScaffoldWithNavBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: PrismRelay.canvas,
       body: navigationShell,
-      bottomNavigationBar: NavigationBar(
+      bottomNavigationBar: PrismDock(
         selectedIndex: navigationShell.currentIndex,
-        onDestinationSelected: (index) => navigationShell.goBranch(
+        onSelected: (index) => navigationShell.goBranch(
           index,
           initialLocation: index == navigationShell.currentIndex,
         ),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.model_training_outlined),
-            selectedIcon: Icon(Icons.model_training),
-            label: 'Models',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.chat_bubble_outline),
-            selectedIcon: Icon(Icons.chat_bubble),
-            label: 'Chat',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.folder_outlined),
-            selectedIcon: Icon(Icons.folder),
-            label: 'Documents',
-          ),
-        ],
       ),
     );
   }

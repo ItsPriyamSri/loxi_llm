@@ -1,204 +1,644 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
+import '../../../core/providers/download_provider.dart';
 import '../../../core/providers/inference_provider.dart';
 import '../../../core/services/ram_check_service.dart';
+import '../../../core/theme/prism_relay.dart';
+import '../../../core/widgets/prism_blocks.dart';
+import '../../../core/widgets/prism_hero.dart';
+import '../../../core/widgets/prism_icon.dart';
+import '../../../core/platform/haptics.dart';
+import '../../chat/presentation/conversation_list_notifier.dart';
+import '../data/model_catalog.dart';
 import '../domain/model.dart';
 import '../domain/model_status.dart';
 import 'models_notifier.dart';
 
-class ModelsScreen extends ConsumerWidget {
+class ModelsScreen extends ConsumerStatefulWidget {
   const ModelsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final modelsAsync = ref.watch(modelsNotifierProvider);
-    final loadingModel = loadingModelOf(modelsAsync.valueOrNull ?? const []);
+  ConsumerState<ModelsScreen> createState() => _ModelsScreenState();
+}
 
-    ref.listen(inferenceNotifierProvider, (previous, next) {
-      final wasLoading = previous?.isLoading ?? false;
-      next.whenOrNull(
-        data: (backend) {
-          if (wasLoading && backend != null) {
-            final name = ref
-                    .read(inferenceNotifierProvider.notifier)
-                    .loadedModel
-                    ?.name ??
-                'Model';
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('$name loaded — ready to chat'),
-                persist: false,
-                action: SnackBarAction(
-                  label: 'Open Chat',
-                  onPressed: () => context.go('/chat'),
-                ),
-              ),
-            );
-          }
-        },
-        error: (e, _) => ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to load model: $e'),
-            backgroundColor: Colors.red,
-          ),
-        ),
-      );
+class _ModelsScreenState extends ConsumerState<ModelsScreen> {
+  String? _focusedId;
+  bool _choosingFile = false;
+  bool _confirmingLoad = false;
+  bool _unloading = false;
+  bool _startingChat = false;
+
+  /// Why the last load in this session failed, shown in the hero while
+  /// that model still reads "Could not load model".
+  ({String modelId, String reason})? _loadFailure;
+  final _downloadRequests = <String>{};
+
+  Future<void> _sideload() async {
+    setState(() => _choosingFile = true);
+    final before = ref.read(modelsNotifierProvider).valueOrNull ?? const [];
+    try {
+      await ref.read(modelsNotifierProvider.notifier).sideloadModel();
+      if (!mounted) return;
+      final after = await ref.read(modelsNotifierProvider.future);
+      if (!mounted) return;
+      final oldIds = before.map((model) => model.id).toSet();
+      final added = after.where((model) =>
+          model.id.startsWith('sideload-') && !oldIds.contains(model.id));
+      if (added.isNotEmpty) setState(() => _focusedId = added.last.id);
+    } catch (error) {
+      if (mounted) {
+        _notice(error is FormatException
+            ? error.message
+            : 'Could not open the model file.');
+      }
+    } finally {
+      if (mounted) setState(() => _choosingFile = false);
+    }
+  }
+
+  Future<void> _load(Model model) async {
+    if (_confirmingLoad) return;
+    setState(() => _confirmingLoad = true);
+    try {
+      if (!await RamCheckService.confirmLoad(context, model: model) ||
+          !mounted) {
+        return;
+      }
+      setState(() {
+        _focusedId = model.id;
+        _loadFailure = null;
+      });
+      Haptics.commit();
+      await ref.read(modelsNotifierProvider.notifier).loadModel(model.id);
+    } on ModelAlreadyLoadingException catch (error) {
+      if (mounted) _notice(error.toString());
+    } catch (error) {
+      // The model row flips to "Could not load model"; keep the reason so
+      // the hero can say why. The inference provider has already logged it
+      // and may hold a friendlier message (the memory hint for big models).
+      if (mounted) {
+        final shown = ref.read(inferenceNotifierProvider).error ?? error;
+        setState(() => _loadFailure = (
+              modelId: model.id,
+              reason: shown is StateError ? shown.message : '$shown',
+            ));
+      }
+    } finally {
+      if (mounted) setState(() => _confirmingLoad = false);
+    }
+  }
+
+  Future<void> _download(Model model) async {
+    if (_downloadRequests.contains(model.id) ||
+        ref.read(downloadServiceProvider).isDownloading(model.id)) {
+      return;
+    }
+    setState(() {
+      _focusedId = model.id;
+      if (_loadFailure?.modelId == model.id) _loadFailure = null;
+      _downloadRequests.add(model.id);
     });
+    Haptics.tap();
+    try {
+      await ref.read(modelsNotifierProvider.notifier).downloadModel(model.id);
+    } catch (_) {
+      if (mounted) _notice('Could not start the download.');
+    } finally {
+      if (mounted) setState(() => _downloadRequests.remove(model.id));
+    }
+  }
 
+  void _stopDownload(Model model) {
+    Haptics.tap();
+    ref.read(modelsNotifierProvider.notifier).cancelDownload(model.id);
+  }
+
+  Future<void> _unload(Model model) async {
+    if (_unloading) return;
+    setState(() => _unloading = true);
+    Haptics.tap();
+    try {
+      await ref.read(modelsNotifierProvider.notifier).unloadModel(model.id);
+    } catch (_) {
+      if (mounted) _notice('Could not unload the model.');
+    } finally {
+      if (mounted) setState(() => _unloading = false);
+    }
+  }
+
+  void _startChat(Model model) {
+    if (_startingChat) return;
+    _startingChat = true;
+    Haptics.commit();
+    try {
+      final id = ref
+          .read(conversationListNotifierProvider.notifier)
+          .createConversation(modelId: model.id);
+      context.go('/chat/$id');
+    } catch (_) {
+      _notice('Could not start a chat.');
+    } finally {
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _startingChat = false);
+    }
+  }
+
+  void _notice(String message) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final catalog = ref.watch(modelsNotifierProvider);
+    final inference = ref.watch(inferenceNotifierProvider);
+    final service = ref.watch(downloadServiceProvider);
+    final models = catalog.valueOrNull ?? const <Model>[];
+    final notifier = ref.read(modelsNotifierProvider.notifier);
+    final loadingModel = loadingModelOf(models);
+    final loading = loadingModel != null;
+    final ready = inference.asData?.value != null
+        ? ref.read(inferenceNotifierProvider.notifier).loadedModel
+        : null;
+    final selected = loadingModel ??
+        models.where((m) => m.id == _focusedId).firstOrNull ??
+        models.where((m) => service.isDownloading(m.id)).firstOrNull ??
+        models.where((m) => m.id == ready?.id).firstOrNull ??
+        models.where((m) => m.id == kStarterModelId).firstOrNull ??
+        models.firstOrNull;
+
+    _ModelPresentation presentation(Model model) {
+      // The engine, not the saved row, says which model is loaded.
+      final status = ready?.id == model.id
+          ? ModelStatus.loaded
+          : model.status == ModelStatus.loaded
+              ? ModelStatus.downloaded
+              : model.status;
+      return _ModelPresentation(
+        model: model,
+        status: status,
+        live: service.isDownloading(model.id),
+        speed: notifier.downloadSpeed[model.id],
+      );
+    }
+
+    VoidCallback? actionFor(_ModelPresentation item) {
+      if (loading || _confirmingLoad || _unloading) return null;
+      final model = item.model;
+      if (_downloadRequests.contains(model.id) && !item.live) return null;
+      return switch (item.status) {
+        ModelStatus.available || ModelStatus.paused => () => _download(model),
+        ModelStatus.downloading =>
+          item.live ? () => _stopDownload(model) : () => _download(model),
+        ModelStatus.downloaded => model.canLoad ? () => _load(model) : null,
+        ModelStatus.loading => null,
+        ModelStatus.loaded => () => _unload(model),
+        ModelStatus.error =>
+          model.localPath != null ? () => _load(model) : () => _download(model),
+      };
+    }
+
+    final item = selected == null ? null : presentation(selected);
+    final heroLoaded = item?.status == ModelStatus.loaded;
+    final heroAction = item == null
+        ? null
+        : heroLoaded
+            ? (loading || _unloading ? null : () => _startChat(item.model))
+            : actionFor(item);
+    final failure = item != null &&
+            item.status == ModelStatus.error &&
+            _loadFailure?.modelId == item.model.id
+        ? _loadFailure!.reason
+        : null;
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: const Text('Models'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.settings_outlined),
             tooltip: 'Settings',
-            // Settings is a separate Scaffold slot, not covered by the
-            // body-level loading overlay below, so it's disabled explicitly
-            // while a load is in flight. This doesn't fully lock the screen
-            // — the bottom nav bar (outside this widget) can still switch to
-            // the Chat/Documents tab — just this one push-navigation path.
-            onPressed:
-                loadingModel == null ? () => context.push('/settings') : null,
+            onPressed: loading ? null : () => context.push('/settings'),
+            icon: const PrismIcon(PrismGlyph.settings,
+                size: 22, color: PrismRelay.plum),
+            style: IconButton.styleFrom(
+              backgroundColor: PrismRelay.lilacSoft,
+              minimumSize: const Size.square(48),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(13),
+              ),
+            ),
           ),
+          const SizedBox(width: 8),
         ],
       ),
-      floatingActionButton: loadingModel != null
-          ? null
-          : FloatingActionButton.extended(
-              icon: const Icon(Icons.file_open),
-              label: const Text('Sideload'),
-              onPressed: () async {
-                try {
-                  await ref.read(modelsNotifierProvider.notifier).sideloadModel();
-                } on FormatException catch (e) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(e.message), backgroundColor: Colors.red),
-                    );
-                  }
-                }
-              },
+      body: Stack(children: [
+        ListView(
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
+          children: [
+            if (item != null)
+              PrismHero(
+                key: const ValueKey('model-hero'),
+                variant: PrismHeroVariant.violet,
+                artImageAsset: kChipArt,
+                status: _focusedId == null &&
+                        item.model.id == kStarterModelId &&
+                        item.status == ModelStatus.available
+                    ? 'Suggested starter'
+                    : item.label,
+                statusGlyph: item.statusGlyph,
+                announceStatus: !item.live,
+                title: item.model.name,
+                detail: Text(
+                  heroLoaded
+                      ? 'You can now chat offline.'
+                      : failure ?? item.metadata,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                progress: item.live || item.status == ModelStatus.loading
+                    ? PrismHeroProgress(
+                        key: ValueKey(item.model.id),
+                        value: item.fraction,
+                        semanticsLabel: item.live ? 'Download progress' : null,
+                        glide: kDownloadProgressInterval,
+                      )
+                    : null,
+                actionLabel: item.actionLabel,
+                actionGlyph: item.actionIcon,
+                cornerActionLabel: heroLoaded ? 'Unload' : null,
+                cornerActionGlyph: PrismGlyph.unload,
+                onCornerAction: heroLoaded && !_unloading
+                    ? () => _unload(item.model)
+                    : null,
+                onAction: heroAction,
+              ),
+            const SizedBox(height: 12),
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                const PrismSectionHeader('Model library',
+                    padding: EdgeInsets.fromLTRB(6, 6, 6, 0), divider: false),
+                TextButton.icon(
+                  onPressed: loading || _choosingFile ? null : _sideload,
+                  icon: const PrismIcon(PrismGlyph.plus, size: 19),
+                  label: Text(_choosingFile ? 'Opening…' : 'Import model'),
+                ),
+              ],
             ),
-      body: Stack(
-        children: [
-          modelsAsync.when(
-            data: (models) => ListView.builder(
-              itemCount: models.length,
-              itemBuilder: (context, index) =>
-                  _ModelListTile(model: models[index]),
+            const SizedBox(height: 4),
+            if (catalog.isLoading && models.isEmpty)
+              ...const [
+                _SkeletonRow(),
+                _SkeletonRow(),
+                _SkeletonRow(),
+              ]
+            else if (catalog.hasError)
+              PrismErrorBanner(
+                message: 'Could not load the model library',
+                retryTooltip: 'Reload model library',
+                onRetry: () => ref.invalidate(modelsNotifierProvider),
+              )
+            else if (models.isEmpty)
+              PrismEmptyState(
+                glyph: PrismGlyph.relay,
+                title: 'No models yet',
+                message: 'Import a model file from this phone to get started.',
+                actionLabel: _choosingFile ? 'Opening…' : 'Import model',
+                onAction: loading || _choosingFile ? null : _sideload,
+              )
+            else
+              Column(
+                children: [
+                  // The header's line, hidden like the others when the
+                  // first row is selected.
+                  Divider(
+                    height: 1,
+                    color: models.first.id == selected?.id
+                        ? PrismRelay.lineStrong.withValues(alpha: 0)
+                        : PrismRelay.lineStrong,
+                  ),
+                  for (final (index, row) in models.map(presentation).indexed) ...[
+                    _ModelRow(
+                      key: ValueKey('model-${row.model.id}'),
+                      index: index,
+                      item: row,
+                      selected: row.model.id == selected?.id,
+                      onSelect: loading
+                          ? null
+                          : () {
+                              Haptics.selection();
+                              setState(() => _focusedId = row.model.id);
+                            },
+                      onAction: actionFor(row),
+                    ),
+                    if (index != models.length - 1)
+                      // No line touching the selected row: it would poke
+                      // out past the rounded border's corners.
+                      Divider(
+                        height: 1,
+                        color: row.model.id == selected?.id ||
+                                models[index + 1].id == selected?.id
+                            ? PrismRelay.line.withValues(alpha: 0)
+                            : PrismRelay.line,
+                      ),
+                  ],
+                ],
+              ),
+          ],
+        ),
+        if (loadingModel != null)
+          Positioned.fill(child: _LoadingOverlay(modelName: loadingModel.name)),
+      ]),
+    );
+  }
+}
+
+class _LoadingOverlay extends StatelessWidget {
+  const _LoadingOverlay({required this.modelName});
+  final String modelName;
+
+  @override
+  Widget build(BuildContext context) {
+    return BlockSemantics(
+      child: Semantics(
+        liveRegion: true,
+        label: 'Loading $modelName into memory',
+        child: Container(
+          color: PrismRelay.canvas,
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                ExcludeSemantics(
+                  child: Image.asset(kChipArt, width: 220, height: 220),
+                ),
+                const SizedBox(height: 10),
+                Text('Loading $modelName…',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 8),
+                Text(
+                  'Large models take a minute the first time.',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Vision models may take a little longer.',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: PrismRelay.inkMuted),
+                ),
+                // Loading reports no progress, so the bar can only sweep;
+                // reduced motion drops it and the copy carries the state.
+                if (!MediaQuery.disableAnimationsOf(context)) ...[
+                  const SizedBox(height: 18),
+                  const SizedBox(
+                    width: 160,
+                    child: LinearProgressIndicator(
+                      minHeight: 5,
+                      borderRadius: BorderRadius.all(Radius.circular(6)),
+                    ),
+                  ),
+                ],
+              ]),
             ),
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, st) => Center(child: Text('Error loading models: $e')),
           ),
-          // On top of the list in the Stack, so it absorbs every tap on the
-          // rows beneath it — no need to separately disable each row's own
-          // button.
-          if (loadingModel != null)
-            Positioned.fill(child: _LoadingOverlay(modelName: loadingModel.name)),
-        ],
+        ),
       ),
     );
   }
 }
 
-/// Full-screen scrim shown while a model is loading: pulsing rings around a
-/// chip icon, the loading model's name, and a reassuring hint. Blocks
-/// interaction with whatever's beneath it in the Stack by simply being an
-/// opaque-enough widget on top — no manual per-row disabling needed.
-class _LoadingOverlay extends StatefulWidget {
-  const _LoadingOverlay({required this.modelName});
+class _ModelPresentation {
+  const _ModelPresentation({
+    required this.model,
+    required this.status,
+    required this.live,
+    required this.speed,
+  });
 
-  final String modelName;
+  final Model model;
+  final ModelStatus status;
+  final bool live;
+  final double? speed;
 
-  @override
-  State<_LoadingOverlay> createState() => _LoadingOverlayState();
+  double? get fraction => live && model.downloadProgress > 0
+      ? model.downloadProgress.clamp(0.0, 1.0)
+      : null;
+
+  String get metadata {
+    final companion = model.mmprojSizeBytes;
+    final inputs = isMultimodalModel(model) ? 'Text and images' : 'Text';
+    if (companion != null) {
+      final total = model.sizeBytes + companion;
+      final label = total >= 1000000000
+          ? '${(total / 1000000000).toStringAsFixed(2)} GB'
+          : '${(total / 1000000).toStringAsFixed(0)} MB';
+      return '$inputs · $label total';
+    }
+    return '$inputs · ${model.sizeLabel}${isMultimodalModel(model) ? ' + vision file' : ''}';
+  }
+
+  String get label => switch (status) {
+        ModelStatus.available => model.recommendationBadge ?? 'Available',
+        ModelStatus.downloading when !live => 'Download interrupted',
+        ModelStatus.downloading => [
+            if (fraction != null)
+              'Downloading · ${(fraction! * 100).toStringAsFixed(0)}%'
+            else
+              'Downloading…',
+            if (speed != null && speed! > 0)
+              speed! >= 1048576
+                  ? '${(speed! / 1048576).toStringAsFixed(1)} MB/s'
+                  : '${(speed! / 1024).toStringAsFixed(0)} KB/s',
+          ].join(' · '),
+        ModelStatus.paused => 'Download stopped',
+        ModelStatus.downloaded => 'Downloaded',
+        ModelStatus.loading => 'Loading into memory…',
+        ModelStatus.loaded => 'Ready on this device',
+        ModelStatus.error => model.localPath != null
+            ? 'Could not load model'
+            : 'Could not complete download',
+      };
+
+  String get actionLabel => switch (status) {
+        ModelStatus.available => 'Download model',
+        ModelStatus.downloading when live => 'Stop download',
+        ModelStatus.downloading || ModelStatus.paused => 'Download again',
+        ModelStatus.downloaded => 'Load model',
+        ModelStatus.loading => 'Loading model',
+        ModelStatus.loaded => 'Start a chat',
+        ModelStatus.error =>
+          model.localPath != null ? 'Retry load' : 'Retry download',
+      };
+
+  PrismGlyph get actionIcon => switch (status) {
+        ModelStatus.available => PrismGlyph.download,
+        ModelStatus.downloading when live => PrismGlyph.close,
+        ModelStatus.downloading ||
+        ModelStatus.paused ||
+        ModelStatus.error =>
+          PrismGlyph.refresh,
+        ModelStatus.downloaded => PrismGlyph.play,
+        ModelStatus.loading => PrismGlyph.relay,
+        ModelStatus.loaded => PrismGlyph.send,
+      };
+
+  PrismGlyph get statusGlyph => switch (status) {
+        ModelStatus.available => PrismGlyph.spark,
+        ModelStatus.downloading => PrismGlyph.download,
+        ModelStatus.paused => PrismGlyph.download,
+        ModelStatus.downloaded => PrismGlyph.check,
+        ModelStatus.loading => PrismGlyph.relay,
+        ModelStatus.loaded => PrismGlyph.check,
+        ModelStatus.error => PrismGlyph.warn,
+      };
 }
 
-class _LoadingOverlayState extends State<_LoadingOverlay>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
+class _ModelRow extends StatelessWidget {
+  const _ModelRow({
+    super.key,
+    required this.index,
+    required this.item,
+    required this.selected,
+    required this.onSelect,
+    required this.onAction,
+  });
 
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1800),
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
+  final int index;
+  final _ModelPresentation item;
+  final bool selected;
+  final VoidCallback? onSelect;
+  final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    // BlockSemantics drops the semantics of everything painted before it in
-    // this same semantics scope — i.e. the model list underneath. Without
-    // it, the scrim blocks touches but a screen reader could still navigate
-    // to and activate a "hidden" row's button. liveRegion announces the
-    // loading text automatically as it appears, rather than requiring the
-    // user to have already focused this part of the screen.
-    return BlockSemantics(
-      child: Semantics(
-        liveRegion: true,
-        child: Container(
-          color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.85),
-          alignment: Alignment.center,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+    final theme = Theme.of(context);
+    final model = item.model;
+    final (tileBg, tileInk) = PrismRelay.identityTile(index);
+    // The hero and the row's action button carry the state. The only state
+    // line a row keeps is a live transfer, over the badge, so a download
+    // stays visible on every row.
+    final showDownloading =
+        item.status == ModelStatus.downloading && item.live;
+    final badge = item.model.recommendationBadge;
+    return Semantics(
+      selected: selected,
+      button: true,
+      label: model.name,
+      child: Material(
+        type: MaterialType.transparency,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          onTap: onSelect,
+          borderRadius: BorderRadius.circular(16),
+          splashColor: PrismRelay.lilacSoft.withValues(alpha: .6),
+          highlightColor: PrismRelay.lilacSoft.withValues(alpha: .3),
+          child: AnimatedContainer(
+            duration: MediaQuery.disableAnimationsOf(context)
+                ? Duration.zero
+                : PrismRelay.motion,
+            curve: PrismRelay.curve,
+            decoration: BoxDecoration(
+              // Fade to a clear lilac, not Colors.transparent: that is
+              // transparent black, and the lerp would flash grey.
+              color: selected
+                  ? PrismRelay.lilacSoft
+                  : PrismRelay.lilacSoft.withValues(alpha: 0),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: selected
+                    ? PrismRelay.periwinkle
+                    : PrismRelay.periwinkle.withValues(alpha: 0),
+                width: 1.5,
+              ),
+            ),
+            padding: const EdgeInsets.fromLTRB(10, 11, 6, 11),
+            child: Row(
               children: [
-                SizedBox(
-                  width: 64,
-                  height: 64,
-                  child: AnimatedBuilder(
-                    animation: _controller,
-                    builder: (context, _) => CustomPaint(
-                      painter: _PulsingRingsPainter(
-                        progress: _controller.value,
-                        color: colorScheme.primary,
-                      ),
-                      child: Center(
-                        child: Container(
-                          width: 30,
-                          height: 30,
-                          decoration: BoxDecoration(
-                            color: colorScheme.primary,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            Icons.auto_awesome,
-                            size: 16,
-                            color: colorScheme.onPrimary,
-                          ),
-                        ),
-                      ),
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: tileBg,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: SizedBox.square(
+                    dimension: 42,
+                    child: PrismIcon(
+                      PrismGlyph.models,
+                      color: tileInk,
+                      size: 20,
                     ),
                   ),
                 ),
-                const SizedBox(height: 14),
-                Text(
-                  'Loading ${widget.modelName}…',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleSmall
-                      ?.copyWith(fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'This can take a little longer for vision models',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        model.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleSmall,
                       ),
+                      const SizedBox(height: 2),
+                      Text(
+                        item.metadata,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall,
+                      ),
+                      if (showDownloading)
+                        // Plain text with fixed-width digits: the numbers
+                        // tick in place instead of cross-fading each update.
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            item.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.labelMedium?.copyWith(
+                              color: PrismRelay.plum,
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700,
+                              fontFeatures: PrismRelay.numbers,
+                            ),
+                          ),
+                        )
+                      else if (badge != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: _GrayPill(badge),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 4),
+                IconButton(
+                  tooltip: item.status == ModelStatus.loaded
+                      ? 'Unload model'
+                      : item.actionLabel,
+                  onPressed: onAction,
+                  icon: PrismIcon(
+                    item.status == ModelStatus.loaded
+                        ? PrismGlyph.unload
+                        : item.actionIcon,
+                    size: 20,
+                  ),
+                  style: IconButton.styleFrom(
+                    // White on the selected row, so the button stays a tile
+                    // on the row's own lilac.
+                    backgroundColor:
+                        selected ? PrismRelay.surface : PrismRelay.lilacSoft,
+                    foregroundColor: PrismRelay.plum,
+                    minimumSize: const Size.square(48),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(13),
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -209,207 +649,84 @@ class _LoadingOverlayState extends State<_LoadingOverlay>
   }
 }
 
-/// Paints 3 rings expanding outward and fading, offset in phase by a third
-/// of a cycle each — a single [progress] value (0..1, repeating) drives all
-/// three rather than needing three separate AnimationControllers.
-class _PulsingRingsPainter extends CustomPainter {
-  _PulsingRingsPainter({required this.progress, required this.color});
-
-  final double progress;
-  final Color color;
+class _SkeletonRow extends StatelessWidget {
+  const _SkeletonRow();
 
   @override
-  void paint(Canvas canvas, Size size) {
-    final center = size.center(Offset.zero);
-    final maxRadius = size.shortestSide / 2;
-    for (var i = 0; i < 3; i++) {
-      final t = (progress + i / 3) % 1.0;
-      // Stays within maxRadius at t=1 — the mockup's CSS version could
-      // bleed past its box since nothing sat close beneath it, but here the
-      // model name/hint text sits right below with limited clearance.
-      final radius = maxRadius * (0.3 + 0.7 * t);
-      final opacity = (1.0 - t) * 0.7;
-      final paint = Paint()
-        ..color = color.withValues(alpha: opacity)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2;
-      canvas.drawCircle(center, radius, paint);
-    }
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 11),
+      child: Row(
+        children: [
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: PrismRelay.line,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const SizedBox.square(dimension: 42),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _SkeletonBar(widthFactor: .55, height: 13),
+                SizedBox(height: 7),
+                _SkeletonBar(widthFactor: .38, height: 10),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
-
-  @override
-  bool shouldRepaint(covariant _PulsingRingsPainter oldDelegate) =>
-      oldDelegate.progress != progress || oldDelegate.color != color;
 }
 
-class _ModelListTile extends ConsumerWidget {
-  const _ModelListTile({required this.model});
+class _SkeletonBar extends StatelessWidget {
+  const _SkeletonBar({required this.widthFactor, required this.height});
 
-  final Model model;
+  final double widthFactor;
+  final double height;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // Live download speed (bytes/sec) for this model, if downloading. The
-    // parent watches modelsNotifierProvider, so this rebuilds as it updates.
-    final speed = model.status == ModelStatus.downloading
-        ? ref.read(modelsNotifierProvider.notifier).downloadSpeed[model.id]
-        : null;
-    final isActive = model.status == ModelStatus.loaded;
-    return Column(
-      children: [
-        ListTile(
-          tileColor: isActive
-              ? Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.35)
-              : null,
-          leading: isActive
-              ? Icon(
-                  Icons.check_circle,
-                  color: Theme.of(context).colorScheme.primary,
-                )
-              : null,
-          title: Text(model.name),
-          subtitle: _subtitle(context, speed),
-          trailing: _trailingWidget(context, ref),
-        ),
-        if (model.status == ModelStatus.downloading)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: LinearProgressIndicator(value: model.downloadProgress),
+  Widget build(BuildContext context) => FractionallySizedBox(
+        alignment: AlignmentDirectional.centerStart,
+        widthFactor: widthFactor,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: PrismRelay.line,
+            borderRadius: BorderRadius.circular(6),
           ),
-      ],
+          child: SizedBox(height: height),
+        ),
+      );
+}
+
+/// Quiet recommendation pill — same warm grey for every badge so only the
+/// icon tiles carry color.
+class _GrayPill extends StatelessWidget {
+  const _GrayPill(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: PrismRelay.pillGray,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+        child: Text(
+          label,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: PrismRelay.pillGrayInk,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+              ),
+        ),
+      ),
     );
-  }
-
-  /// Format a download speed in bytes/second as e.g. "3.4 MB/s" or "812 KB/s".
-  static String _formatSpeed(double bytesPerSecond) {
-    if (bytesPerSecond >= 1024 * 1024) {
-      return '${(bytesPerSecond / (1024 * 1024)).toStringAsFixed(1)} MB/s';
-    }
-    if (bytesPerSecond >= 1024) {
-      return '${(bytesPerSecond / 1024).toStringAsFixed(0)} KB/s';
-    }
-    return '${bytesPerSecond.toStringAsFixed(0)} B/s';
-  }
-
-  Widget _subtitle(BuildContext context, double? speed) {
-    final badge = model.recommendationBadge;
-    final speedSuffix = (speed != null && speed > 0)
-        ? ' · ${_formatSpeed(speed)}'
-        : '';
-    final statusLabel = switch (model.status) {
-      ModelStatus.downloading =>
-        '${model.sizeLabel} — ${(model.downloadProgress * 100).toStringAsFixed(0)}%$speedSuffix',
-      ModelStatus.loading => '${model.sizeLabel} — loading into memory…',
-      ModelStatus.loaded => '${model.sizeLabel} — active, ready to chat',
-      _ => '${model.sizeLabel} — ${model.status.name}',
-    };
-    final chips = <Widget>[
-      if (model.status == ModelStatus.loaded)
-        Chip(
-          label: const Text('Active'),
-          padding: EdgeInsets.zero,
-          labelStyle: TextStyle(
-            fontSize: 11,
-            color: Theme.of(context).colorScheme.onPrimaryContainer,
-          ),
-          backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-          visualDensity: VisualDensity.compact,
-        ),
-      if (badge != null)
-        Chip(
-          label: Text(badge),
-          padding: EdgeInsets.zero,
-          labelStyle: const TextStyle(fontSize: 11),
-          visualDensity: VisualDensity.compact,
-        ),
-    ];
-    if (chips.isEmpty) return Text(statusLabel);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(statusLabel),
-        const SizedBox(height: 4),
-        Wrap(spacing: 6, runSpacing: 4, children: chips),
-      ],
-    );
-  }
-
-  Widget _trailingWidget(BuildContext context, WidgetRef ref) {
-    return switch (model.status) {
-      ModelStatus.available => IconButton(
-          icon: const Icon(Icons.cloud_download_outlined),
-          tooltip: 'Download',
-          onPressed: () => ref
-              .read(modelsNotifierProvider.notifier)
-              .downloadModel(model.id),
-        ),
-      ModelStatus.downloading => Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              icon: const Icon(Icons.close),
-              tooltip: 'Cancel',
-              onPressed: () => ref
-                  .read(modelsNotifierProvider.notifier)
-                  .cancelDownload(model.id),
-            ),
-          ],
-        ),
-      ModelStatus.downloaded => IconButton(
-          icon: const Icon(Icons.play_arrow, color: Colors.green),
-          tooltip: 'Load model',
-          onPressed: () => _confirmAndLoad(context, ref),
-        ),
-      ModelStatus.loading => const SizedBox(
-          width: 24,
-          height: 24,
-          child: CircularProgressIndicator(strokeWidth: 2),
-        ),
-      ModelStatus.loaded => IconButton(
-          icon: const Icon(Icons.stop, color: Colors.blue),
-          tooltip: 'Unload model',
-          onPressed: () => ref
-              .read(modelsNotifierProvider.notifier)
-              .unloadModel(model.id),
-        ),
-      // `error` covers two distinct failures: a download that never finished
-      // (no localPath yet — retry re-downloads) and a load that failed on an
-      // already-complete file (localPath set — retry re-downloading would
-      // re-request a file that's already whole, e.g. hitting the server with
-      // a range request past EOF; what the user actually wants is to retry
-      // the load, which is cheap and doesn't touch the network).
-      ModelStatus.error => model.localPath != null
-          ? IconButton(
-              icon: const Icon(Icons.refresh),
-              tooltip: 'Retry load',
-              onPressed: () => _confirmAndLoad(context, ref),
-            )
-          : IconButton(
-              icon: const Icon(Icons.refresh),
-              tooltip: 'Retry download',
-              onPressed: () => ref
-                  .read(modelsNotifierProvider.notifier)
-                  .downloadModel(model.id),
-            ),
-      _ => const SizedBox.shrink(),
-    };
-  }
-
-  Future<void> _confirmAndLoad(BuildContext context, WidgetRef ref) async {
-    final confirmed = await RamCheckService.confirmLoad(context, model: model);
-    if (!confirmed || !context.mounted) return;
-    try {
-      await ref.read(modelsNotifierProvider.notifier).loadModel(model.id);
-    } on ModelAlreadyLoadingException catch (e) {
-      // A genuine backend load failure is deliberately NOT caught here — it
-      // already surfaces via inferenceNotifierProvider's AsyncError state
-      // (see ModelsScreen's ref.listen); catching it again here would show
-      // two SnackBars for the same failure.
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$e'), backgroundColor: Colors.red),
-        );
-      }
-    }
   }
 }

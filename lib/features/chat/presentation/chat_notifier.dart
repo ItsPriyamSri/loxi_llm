@@ -16,6 +16,7 @@ import '../application/conversation_summarizer.dart';
 import '../application/prompt_builder.dart';
 import '../data/conversation_repository.dart';
 import '../data/message_repository.dart';
+import '../domain/conversation.dart';
 import '../domain/message.dart';
 import '../domain/message_role.dart';
 import '../../documents/data/document_chunk_repository.dart';
@@ -255,7 +256,7 @@ class ChatNotifier extends _$ChatNotifier {
       final conversation = convRepo.getById(conversationId);
       if (conversation != null) {
         final loadedId = loadedModel?.id ?? '';
-        final nextTitle = conversation.title == 'New conversation'
+        final nextTitle = isPlaceholderChatTitle(conversation.title)
             ? firstMessageTitle(userText)
             : conversation.title;
         final nextModelId =

@@ -47,7 +47,7 @@ graph TD
     ROUTER["appRouterProvider\n(GoRouter)"]
     ONBOARD["OnboardingScreen"]
     SETTINGS["SettingsScreen"]
-    SHELL["StatefulShellRoute\n(BottomNavigationBar)"]
+    SHELL["StatefulShellRoute\n(PrismDock)"]
     MODELS["ModelsScreen"]
     CHAT["ChatScreen / ConversationScreen"]
     DOCS["DocumentsScreen"]
@@ -155,6 +155,8 @@ lib/
 │   │   ├── backend_selector.dart      # backendForModel() — format → backend
 │   │   ├── llama_cpp_backend.dart     # flutter_llama wrapper (.gguf)
 │   │   └── mediapipe_backend.dart     # flutter_gemma wrapper (.task)
+│   ├── platform/
+│   │   └── haptics.dart               # Haptic feedback on key actions
 │   ├── providers/
 │   │   ├── objectbox_provider.dart    # objectBoxStoreProvider
 │   │   ├── shared_preferences_provider.dart
@@ -163,12 +165,21 @@ lib/
 │   │   └── download_provider.dart     # dioProvider, fileStorageServiceProvider
 │   ├── router/
 │   │   └── app_router.dart            # appRouterProvider, _ScaffoldWithNavBar
-│   └── services/
-│       ├── download_service.dart      # Dio-based model download with progress
-│       ├── embedding_service.dart     # EmbeddingService (ONNX BGE-small)
-│       ├── file_storage_service.dart  # Model file path management
-│       ├── ram_check_service.dart     # confirmLoad() dialog
-│       └── text_extraction_service.dart  # PDF/DOCX/TXT → plain text
+│   ├── services/
+│   │   ├── download_service.dart      # Dio-based model download with progress
+│   │   ├── embedding_service.dart     # EmbeddingService (ONNX BGE-small)
+│   │   ├── file_storage_service.dart  # Model file path management
+│   │   ├── ram_check_service.dart     # confirmLoad() dialog
+│   │   └── text_extraction_service.dart  # PDF/DOCX/TXT → plain text
+│   ├── theme/
+│   │   └── prism_relay.dart           # Colour tokens, motion, ThemeData (light only)
+│   └── widgets/
+│       ├── prism_dock.dart            # Floating three-tab dock for the shell
+│       ├── prism_hero.dart            # 200 dp hero tile (Models, Chat, Documents)
+│       ├── prism_art.dart             # Painted welcome and document art
+│       ├── prism_icon.dart            # PrismGlyph → Lucide icon map, brand mark
+│       └── prism_blocks.dart          # Section header, empty state, error banner, notice,
+│                                      # delete confirm dialog, background wash
 │
 ├── features/
 │   ├── models/
@@ -221,7 +232,7 @@ lib/
 │   │
 │   └── onboarding/
 │       └── presentation/
-│           └── onboarding_screen.dart # 3-page PageView + onboarding_complete flag
+│           └── onboarding_screen.dart # single welcome page + onboarding_complete flag
 
 test/
 ├── widget_test.dart       # App smoke test
@@ -519,8 +530,10 @@ graph TD
 | `message_bubble_test.dart` | `MessageBubble` renders an attached image when `imagePath` is set, renders none when null | Widget test with a real temp-file PNG |
 | `chat_test.dart` | `_buildPrompt` output, streaming state transitions, auto-title logic, `shouldSendMessage`/`firstMessageTitle` (image-only send gating and title fallback), `historyTurnsForPrompt`/`imagePathsForGeneration` (image marker applied only to the current turn, `imagePaths` gated on `supportsVision`) | Mocks inference backend. **Gap:** `ChatNotifier.send()`'s actual `generate()` call sites aren't exercised end-to-end (would need a real ObjectBox store — see `models_notifier_test.dart` note) |
 | `ram_check_service_test.dart` | `isLargeModel`/`ramWarningMessage` combined-size threshold math, vision vs. text-only dialog wording, vision model with unknown mmproj size | Pure Dart |
-| `models_notifier_test.dart` | `loadingModelOf`, `shouldReconcileStaleModels`/`staleModelsToReconcile` (cold-start reconciliation runs once, not on every rebuild), `ModelAlreadyLoadingException` | Pure Dart. A real ObjectBox-backed test was attempted first but this environment lacks the native lib `flutter test` needs (`Failed to load dynamic library 'libobjectbox.dylib'` — a separate install step, not yet done here or verified in CI) |
+| `models_notifier_test.dart` | `loadingModelOf`, `shouldReconcileStaleModels`/`staleModelsToReconcile` (cold-start reconciliation runs once, not on every rebuild; a cut-off or failed download with no file resets to available), `ModelAlreadyLoadingException` | Pure Dart. A real ObjectBox-backed test was attempted first but this environment lacks the native lib `flutter test` needs (`Failed to load dynamic library 'libobjectbox.dylib'` — a separate install step, not yet done here or verified in CI) |
 | `conversation_screen_test.dart` | `stillAllowsAttachment` (image-attachment survives a transient `AsyncLoading` model-switch tick, dropped once settled on a non-vision result), `attachedPathToRestoreAfterSendError` (only restores when the file still exists) | Pure Dart |
+| `prism_models_test.dart` | Models screen: selecting a model updates the hero without downloading, the loading page follows model state, live transfers stay scoped to the selected model, a failed load keeps its reason in the hero | Widget test with an overridden `ModelsNotifier` |
+| `prism_documents_test.dart` | Documents screen: an import keeps the imported list on screen, and the Import button comes back after a failed import | Widget test with an overridden `DocumentsNotifier` |
 | `embedding_test.dart` | `EmbeddingService` init, `embedQuery` vs `embedPassage` prefix, cosine similarity | Requires ONNX asset in test runner |
 | `rag_test.dart` | Full document ingestion pipeline, `findSimilar` returns top-k nearest chunks | Uses ObjectBox in-memory config |
 | `download_test.dart` | `DownloadService` progress callbacks, cancel token, file write | Mocks Dio |

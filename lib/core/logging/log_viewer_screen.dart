@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../platform/haptics.dart';
+import '../theme/prism_relay.dart';
+import '../widgets/prism_blocks.dart';
+import '../widgets/prism_icon.dart';
 import 'app_logger.dart';
 
 /// Live, filterable view of [AppLogger] output. Reachable from Settings and
@@ -18,14 +22,24 @@ class _LogViewerScreenState extends State<LogViewerScreen> {
   /// When true, show the persisted file (survives crashes/restarts) instead of
   /// the live in-memory buffer. Crash diagnosis needs the file view.
   bool _showFile = false;
+  bool _readingFile = false;
   String _fileContents = '';
 
   bool _passesFilter(LogEntry e) =>
       _minLevel == null || e.level.index >= _minLevel!.index;
 
   Future<void> _loadFile() async {
+    setState(() {
+      _showFile = true;
+      _readingFile = true;
+    });
     final contents = await AppLogger.instance.readFile();
-    if (mounted) setState(() => _fileContents = contents);
+    if (mounted) {
+      setState(() {
+        _fileContents = contents;
+        _readingFile = false;
+      });
+    }
   }
 
   Color _levelColor(BuildContext context, LogLevel level) {
@@ -33,7 +47,7 @@ class _LogViewerScreenState extends State<LogViewerScreen> {
     return switch (level) {
       LogLevel.debug => scheme.outline,
       LogLevel.info => scheme.onSurface,
-      LogLevel.warn => Colors.orange.shade800,
+      LogLevel.warn => PrismRelay.amberInk,
       LogLevel.error => scheme.error,
     };
   }
@@ -42,52 +56,75 @@ class _LogViewerScreenState extends State<LogViewerScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: Text(_showFile ? 'Logs (saved file)' : 'Logs (live)'),
         actions: [
           IconButton(
-            icon: Icon(_showFile ? Icons.bolt : Icons.history),
+            icon: PrismIcon(_showFile ? PrismGlyph.log : PrismGlyph.clock),
             tooltip: _showFile
                 ? 'Show live session'
                 : 'Show saved file (survives crashes)',
-            onPressed: () async {
-              if (!_showFile) await _loadFile();
-              if (mounted) setState(() => _showFile = !_showFile);
-            },
+            onPressed: _readingFile
+                ? null
+                : _showFile
+                    ? () => setState(() => _showFile = false)
+                    : _loadFile,
           ),
           if (!_showFile)
-            PopupMenuButton<LogLevel?>(
-              tooltip: 'Filter level',
-              icon: const Icon(Icons.filter_list),
-              onSelected: (level) => setState(() => _minLevel = level),
+            PopupMenuButton<String>(
+              tooltip: _minLevel == null
+                  ? 'Filter level'
+                  : 'Filter level (${_minLevel!.label}+)',
+              // Accent while a filter hides some entries.
+              icon: PrismIcon(PrismGlyph.filter,
+                  color: _minLevel == null ? null : PrismRelay.accent),
+              // String values: a null value never reaches onSelected, so
+              // 'all' stands for no filter.
+              onSelected: (level) => setState(
+                  () => _minLevel = LogLevel.values.asNameMap()[level]),
               itemBuilder: (context) => [
-                const PopupMenuItem(value: null, child: Text('All')),
+                const PopupMenuItem(value: 'all', child: Text('All')),
                 for (final level in LogLevel.values)
-                  PopupMenuItem(value: level, child: Text('${level.label}+')),
+                  PopupMenuItem(
+                      value: level.name, child: Text('${level.label}+')),
               ],
             ),
           IconButton(
-            icon: const Icon(Icons.copy_all),
+            icon: const PrismIcon(PrismGlyph.copy),
             tooltip: 'Copy all',
-            onPressed: () async {
-              final text = _showFile ? _fileContents : AppLogger.instance.dump();
-              await Clipboard.setData(ClipboardData(text: text));
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Logs copied to clipboard')),
-                );
-              }
-            },
+            onPressed: _readingFile
+                ? null
+                : () async {
+                    final text =
+                        _showFile ? _fileContents : AppLogger.instance.dump();
+                    await Clipboard.setData(ClipboardData(text: text));
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                            content: Text('Logs copied to clipboard')),
+                      );
+                    }
+                  },
           ),
           IconButton(
-            icon: const Icon(Icons.delete_outline),
+            icon: const PrismIcon(PrismGlyph.trash),
             tooltip: 'Clear',
-            onPressed: () async {
-              await AppLogger.instance.clear();
-              if (mounted) {
-                setState(() => _fileContents = '');
-              }
-            },
+            onPressed: _readingFile
+                ? null
+                : () async {
+                    final confirmed = await confirmDestructive(
+                      context,
+                      title: 'Clear logs?',
+                      message: 'This permanently erases the diagnostic logs '
+                          'on this device, including saved ones.',
+                      confirmLabel: 'Clear',
+                    );
+                    if (!confirmed || !mounted) return;
+                    Haptics.tap();
+                    await AppLogger.instance.clear();
+                    if (mounted) {
+                      setState(() => _fileContents = '');
+                    }
+                  },
           ),
         ],
       ),
@@ -96,15 +133,41 @@ class _LogViewerScreenState extends State<LogViewerScreen> {
   }
 
   Widget _buildFileView(BuildContext context) {
-    if (_fileContents.isEmpty) {
-      return const Center(child: Text('Saved log file is empty'));
+    if (_readingFile) return const Center(child: CircularProgressIndicator());
+    if (_fileContents.startsWith(AppLogger.readFailurePrefix)) {
+      return ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          PrismErrorBanner(
+            message: 'Could not read saved logs.',
+            retryTooltip: 'Read saved logs again',
+            onRetry: _loadFile,
+          ),
+        ],
+      );
     }
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(8),
-      child: SelectableText(
-        _fileContents,
-        style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-      ),
+    if (_fileContents.isEmpty) {
+      return ListView(children: const [
+        PrismEmptyState(
+          glyph: PrismGlyph.log,
+          title: 'Saved log file is empty',
+          message: 'Logs are written here as the app runs.',
+        ),
+      ]);
+    }
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: SelectableText(
+              _fileContents,
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 14),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -116,11 +179,26 @@ class _LogViewerScreenState extends State<LogViewerScreen> {
         final entries =
             AppLogger.instance.entries.where(_passesFilter).toList();
         if (entries.isEmpty) {
-          return const Center(child: Text('No logs yet'));
+          return ListView(children: [
+            AppLogger.instance.entries.isEmpty
+                ? const PrismEmptyState(
+                    glyph: PrismGlyph.log,
+                    title: 'No logs yet',
+                    message: 'App and inference activity shows up here.',
+                  )
+                : PrismEmptyState(
+                    glyph: PrismGlyph.filter,
+                    title: 'No matching logs',
+                    message: 'Nothing at this level or above yet.',
+                    actionLabel: 'Show all',
+                    actionGlyph: PrismGlyph.filter,
+                    onAction: () => setState(() => _minLevel = null),
+                  ),
+          ]);
         }
         return ListView.builder(
           reverse: true,
-          padding: const EdgeInsets.all(8),
+          padding: const EdgeInsets.all(20),
           itemCount: entries.length,
           itemBuilder: (context, index) {
             // reverse: show newest at the bottom.
@@ -131,7 +209,7 @@ class _LogViewerScreenState extends State<LogViewerScreen> {
                 entry.format(),
                 style: TextStyle(
                   fontFamily: 'monospace',
-                  fontSize: 12,
+                  fontSize: 14,
                   color: _levelColor(context, entry.level),
                 ),
               ),

@@ -132,15 +132,19 @@ class AppLogger {
     }
   }
 
+  /// Prefix of the text [readFile] returns when the file cannot be read.
+  static const readFailurePrefix = 'Failed to read log file:';
+
   /// Read the full persisted log file (survives restarts/crashes). Returns an
-  /// empty string if logging to disk is unavailable or the file is missing.
+  /// empty string if logging to disk is unavailable or the file is missing,
+  /// and text starting with [readFailurePrefix] if reading fails.
   Future<String> readFile() async {
     try {
       final file = _file;
       if (file == null || !await file.exists()) return '';
       return await file.readAsString();
     } catch (e) {
-      return 'Failed to read log file: $e';
+      return '$readFailurePrefix $e';
     }
   }
 

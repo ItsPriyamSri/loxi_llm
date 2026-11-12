@@ -1,10 +1,13 @@
 import '../domain/model.dart';
 
+/// The small model the Models screen suggests to a first-time user.
+const kStarterModelId = 'gemma3-270m-it';
+
 /// Curated models shown to users on first launch.
 /// These are seeded into ObjectBox when the DB is empty.
 const List<Model> kCuratedModels = [
   Model(
-    id: 'gemma3-270m-it',
+    id: kStarterModelId,
     name: 'Gemma 3 270M IT',
     sizeLabel: '253 MB',
     sizeBytes: 265289728,
