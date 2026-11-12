@@ -9,7 +9,7 @@ This folder contains project documentation for **Loki LLM**, a Flutter applicati
 | [PROJECT.md](PROJECT.md) | Full architectural reference: tech stack, directory layout, data model, chat/RAG flow, routing, provider graph, testing, build & run |
 | [agent-harness-architecture.md](agent-harness-architecture.md) | Target design for the tool-using agent loop: Tool interface, registry, loop, GBNF, context management |
 | [multimodal-device-qa.md](multimodal-device-qa.md) | Manual device checklist for on-device image-grounded chat (Gemma 4 vision) — run before a release that touches multimodal code |
-| [UI redesign handoff](design/loki-ui-redesign.md) | Locked Android scope and routes, with links to the warm Prism Relay system, the 67-state prototype, the Flutter build plan and the implementation/QA contract |
+
 
 ## Quick links
 

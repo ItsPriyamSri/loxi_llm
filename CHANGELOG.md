@@ -33,6 +33,12 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - A chat no longer stays locked with a Stop button after a generation timeout or error; the conversation stays usable and a message explains what happened ([#106](https://github.com/LucknowAI/loki_llm/issues/106))
 - The "model loaded" snackbar no longer stays on screen until dismissed ([#101](https://github.com/LucknowAI/loki_llm/issues/101))
 - Chat reaches the first token faster on Android. The engine uses the ARM CPU instructions the phone supports, and a follow-up turn reuses the part of the conversation it already read ([#108](https://github.com/LucknowAI/loki_llm/issues/108))
+- Stopping a download no longer marks the model as a failed download
+- The log viewer's "All" filter clears the level filter again
+- A download that was cut off or failed shows as available again the next time the app opens, instead of staying marked as failed. Downloading again resumes from the partial file
+- At large text the dock labels no longer wrap and the hero buttons no longer cut off
+- The + sheet in a chat covers the dock, and the shortcut chips hide while the keyboard is open
+- Delete confirmations say what will be removed, and the delete button is red
 
 ## [1.2.0] — 2026-09-16
 
