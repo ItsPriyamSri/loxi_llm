@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/services.dart';
 import 'package:onnxruntime/onnxruntime.dart';
 import 'package:dart_wordpiece/dart_wordpiece.dart';
@@ -32,7 +34,11 @@ class EmbeddingService {
     _session = OrtSession.fromBuffer(modelBytes, OrtSessionOptions());
 
     final vocabText = await rootBundle.loadString(_vocabAsset);
-    _tokenizer = WordPieceTokenizer.fromString(vocabText);
+    // BERT's 512-token limit; the default (64) cut most chunks short.
+    _tokenizer = WordPieceTokenizer.fromString(
+      vocabText,
+      config: const TokenizerConfig(maxLength: 512),
+    );
   }
 
   /// Embed a search query (adds BGE retrieval prefix).
@@ -49,36 +55,40 @@ class EmbeddingService {
   Future<List<double>> _embed(String text) async {
     assert(isInitialized, 'EmbeddingService.init() must be called first');
     final tokens = _tokenizer!.encode(text);
-    final seqLen = tokens.length;
+    // The tokenizer pads to maxLength; run only the real tokens.
+    final seqLen = tokens.realLength;
 
     final ortIds = OrtValueTensor.createTensorWithDataList(
-        tokens.inputIdsInt64, [1, seqLen]);
+        tokens.inputIdsInt64.sublist(0, seqLen), [1, seqLen]);
     final ortMask = OrtValueTensor.createTensorWithDataList(
-        tokens.attentionMaskInt64, [1, seqLen]);
+        tokens.attentionMaskInt64.sublist(0, seqLen), [1, seqLen]);
     final ortTypes = OrtValueTensor.createTensorWithDataList(
-        tokens.tokenTypeIdsInt64, [1, seqLen]);
-
+        tokens.tokenTypeIdsInt64.sublist(0, seqLen), [1, seqLen]);
     final runOptions = OrtRunOptions();
-    final outputs = await _session!.runAsync(runOptions, {
-      'input_ids': ortIds,
-      'attention_mask': ortMask,
-      'token_type_ids': ortTypes,
-    });
-
-    // outputs[1] = sentence_embedding [1, 384] — CLS-pooled, L2-normalized.
-    // .value returns List<List<double>> for a [1, 384] float32 tensor.
-    final raw = outputs![1]?.value as List;
-    final embedding = (raw[0] as List).cast<double>();
-
-    ortIds.release();
-    ortMask.release();
-    ortTypes.release();
-    runOptions.release();
-    for (final e in outputs) {
-      e?.release();
+    List<OrtValue?>? outputs;
+    try {
+      outputs = await _session!.runAsync(runOptions, {
+        'input_ids': ortIds,
+        'attention_mask': ortMask,
+        'token_type_ids': ortTypes,
+      });
+      // The model's only output is last_hidden_state [1, seq, 384].
+      // BGE pools on the CLS token (position 0), then L2-normalizes. The
+      // HNSW index uses Euclidean distance, which ranks like cosine only on
+      // unit vectors.
+      final hidden = outputs![0]!.value as List;
+      final cls = ((hidden[0] as List)[0] as List).cast<double>();
+      final norm = math.sqrt(cls.fold<double>(0, (s, x) => s + x * x));
+      return List<double>.unmodifiable([for (final x in cls) x / norm]);
+    } finally {
+      ortIds.release();
+      ortMask.release();
+      ortTypes.release();
+      runOptions.release();
+      for (final e in outputs ?? const <OrtValue?>[]) {
+        e?.release();
+      }
     }
-
-    return List<double>.unmodifiable(embedding);
   }
 
   /// Release ORT resources. Called by provider's ref.onDispose.
@@ -88,3 +98,4 @@ class EmbeddingService {
     _tokenizer = null;
   }
 }
+

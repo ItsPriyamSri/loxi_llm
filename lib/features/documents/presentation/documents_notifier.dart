@@ -66,38 +66,32 @@ class DocumentsNotifier extends _$DocumentsNotifier {
       );
       final chunkTexts = splitter.splitText(text);
 
-      // 3. Persist Document record
+      // 3. Embed every chunk before saving anything, so a failed embed
+      //    leaves no document without vectors behind.
       final now = DateTime.now().millisecondsSinceEpoch;
       final docId = 'doc-$now';
-      final format = _detectFormat(fileName);
-      final doc = Document(
-        id: docId,
-        name: fileName,
-        format: format,
-        chunkCount: chunkTexts.length,
-        createdAtMs: now,
-      );
-      ref.read(documentRepositoryProvider).save(doc);
-
-      // 4. Embed each chunk and store
-      final embeddingService = ref.read(embeddingServiceProvider).valueOrNull;
-      final chunkRepo = ref.read(documentChunkRepositoryProvider);
+      final embeddingService = await ref.read(embeddingServiceProvider.future);
       final chunks = <DocumentChunk>[];
       for (int i = 0; i < chunkTexts.length; i++) {
-        List<double>? embedding;
-        if (embeddingService != null && embeddingService.isInitialized) {
-          embedding = await embeddingService.embedPassage(chunkTexts[i]);
-        }
         chunks.add(DocumentChunk(
           chunkId: 'chunk-$docId-$i',
           documentId: docId,
           content: chunkTexts[i],
           chunkIndex: i,
           createdAtMs: now,
-          embedding: embedding,
+          embedding: await embeddingService.embedPassage(chunkTexts[i]),
         ));
       }
-      chunkRepo.saveChunks(chunks);
+
+      // 4. Persist the document and its chunks
+      ref.read(documentRepositoryProvider).save(Document(
+            id: docId,
+            name: fileName,
+            format: _detectFormat(fileName),
+            chunkCount: chunkTexts.length,
+            createdAtMs: now,
+          ));
+      ref.read(documentChunkRepositoryProvider).saveChunks(chunks);
 
       ref.invalidateSelf();
     } catch (e, st) {
