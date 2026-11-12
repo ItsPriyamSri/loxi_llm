@@ -119,6 +119,10 @@ class _Sliders extends StatelessWidget {
         const SizedBox(height: 24),
         Text('Next message', style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 4),
+        Text(
+          'Used on the next reply, including a tool-using turn.',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
         _slider(
           context,
           label: 'Temperature',

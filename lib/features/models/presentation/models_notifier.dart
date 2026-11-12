@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -222,6 +223,8 @@ class ModelsNotifier extends _$ModelsNotifier {
         ));
       }
     } catch (e, st) {
+      // A user stop is not a failure: cancelDownload already reset the row.
+      if (e is DioException && CancelToken.isCancel(e)) return;
       AppLogger.instance.error(
           'ModelsNotifier', 'Failed to download model $modelId', e, st);
       final current = repo.getById(modelId);

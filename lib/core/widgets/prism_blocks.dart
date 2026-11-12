@@ -90,6 +90,90 @@ class PrismErrorBanner extends StatelessWidget {
   }
 }
 
+/// Centered empty-library message: a lilac glyph tile, a title, one line
+/// of help and an optional call to action.
+class PrismEmptyState extends StatelessWidget {
+  const PrismEmptyState({
+    super.key,
+    required this.glyph,
+    required this.title,
+    required this.message,
+    this.actionLabel,
+    this.onAction,
+  });
+
+  final PrismGlyph glyph;
+  final String title;
+  final String message;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final type = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(32, 44, 32, 0),
+      child: Column(
+        children: [
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: PrismRelay.lilacSoft,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: SizedBox.square(
+              dimension: 72,
+              child: PrismIcon(glyph, size: 30, color: PrismRelay.plum),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(title, textAlign: TextAlign.center, style: type.titleMedium),
+          const SizedBox(height: 4),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: type.bodyMedium?.copyWith(color: PrismRelay.inkMuted),
+          ),
+          if (actionLabel != null) ...[
+            const SizedBox(height: 18),
+            FilledButton.icon(
+              onPressed: onAction,
+              icon: const PrismIcon(PrismGlyph.plus, size: 18),
+              label: Text(actionLabel!),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Asks before a destructive action. True only when the user confirms.
+Future<bool> confirmDestructive(
+  BuildContext context, {
+  required String title,
+  required String message,
+  required String confirmLabel,
+}) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(title),
+      content: Text(message),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: Text(confirmLabel),
+        ),
+      ],
+    ),
+  );
+  return confirmed ?? false;
+}
+
 /// Static backdrop behind the chat list and conversation: a lilac wash
 /// top-left and a peach wash bottom-right. Painted once; nothing animates.
 class PrismAmbientWash extends StatelessWidget {

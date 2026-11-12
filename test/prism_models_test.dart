@@ -6,6 +6,7 @@ import 'package:loki_llm/core/providers/download_provider.dart';
 import 'package:loki_llm/core/services/download_service.dart';
 import 'package:loki_llm/core/services/file_storage_service.dart';
 import 'package:loki_llm/core/theme/prism_relay.dart';
+import 'package:loki_llm/features/models/data/model_catalog.dart';
 import 'package:loki_llm/features/models/domain/model.dart';
 import 'package:loki_llm/features/models/domain/model_status.dart';
 import 'package:loki_llm/features/models/presentation/models_notifier.dart';
@@ -43,10 +44,10 @@ void main() {
       child: MaterialApp(theme: PrismRelay.light, home: const ModelsScreen()),
     ));
     await tester.pumpAndSettle();
-    models.setStatus('gemma3-270m-it', ModelStatus.loading);
+    models.setStatus(kStarterModelId, ModelStatus.loading);
     await tester.pump();
     expect(find.text('Loading Starter…'), findsOneWidget);
-    models.setStatus('gemma3-270m-it', ModelStatus.loaded);
+    models.setStatus(kStarterModelId, ModelStatus.loaded);
     await tester.pump();
     expect(find.text('Loading Starter…'), findsNothing);
   });
@@ -67,8 +68,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    downloads.live.addAll(['gemma3-270m-it', 'second']);
-    models.transfer('gemma3-270m-it', .15);
+    downloads.live.addAll([kStarterModelId, 'second']);
+    models.transfer(kStarterModelId, .15);
     models.transfer('second', .62);
     await tester.pumpAndSettle();
     final hero = find.byKey(const ValueKey('model-hero'));
@@ -79,7 +80,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(heroText('62%'), findsOneWidget);
 
-    models.transfer('gemma3-270m-it', .4);
+    models.transfer(kStarterModelId, .4);
     await tester.pumpAndSettle();
     expect(heroText('62%'), findsOneWidget);
     expect(heroText('40%'), findsNothing);
@@ -99,7 +100,7 @@ void main() {
     for (var frame = 0; frame < 10; frame++) {
       await tester.pump(const Duration(milliseconds: 16));
       final boxes = tester.widgetList<DecoratedBox>(find.descendant(
-          of: find.byKey(const ValueKey('model-gemma3-270m-it')),
+          of: find.byKey(const ValueKey('model-$kStarterModelId')),
           matching: find.byType(DecoratedBox)));
       for (final box in boxes) {
         final decoration = box.decoration;
@@ -123,7 +124,7 @@ void main() {
       child: MaterialApp(theme: PrismRelay.light, home: const ModelsScreen()),
     ));
     await tester.pumpAndSettle();
-    models.setStatus('gemma3-270m-it', ModelStatus.downloaded,
+    models.setStatus(kStarterModelId, ModelStatus.downloaded,
         localPath: '/tmp/starter.gguf');
     await tester.pumpAndSettle();
 
@@ -180,7 +181,7 @@ class _Catalog extends ModelsNotifier {
   @override
   Future<List<Model>> build() async => const [
         Model(
-            id: 'gemma3-270m-it',
+            id: kStarterModelId,
             name: 'Starter',
             sizeLabel: '253 MB',
             sizeBytes: 253),

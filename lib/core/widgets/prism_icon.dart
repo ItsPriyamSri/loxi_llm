@@ -39,6 +39,7 @@ enum PrismGlyph {
   brokenImage,
   unload,
   speed,
+  filter,
 }
 
 const _glyphs = <PrismGlyph, IconData>{
@@ -75,6 +76,7 @@ const _glyphs = <PrismGlyph, IconData>{
   PrismGlyph.brokenImage: LucideIcons.imageOff,
   PrismGlyph.unload: LucideIcons.eject,
   PrismGlyph.speed: LucideIcons.zap,
+  PrismGlyph.filter: LucideIcons.listFilter,
 };
 
 class PrismIcon extends StatelessWidget {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/platform/haptics.dart';
 import '../../../core/theme/prism_relay.dart';
+import '../../../core/widgets/prism_blocks.dart';
 import '../../../core/widgets/prism_icon.dart';
 import 'settings_notifier.dart';
 
@@ -29,59 +30,24 @@ class PromptLibraryScreen extends ConsumerWidget {
         ],
       ),
       body: prompts.isEmpty
-          ? Padding(
-              padding: const EdgeInsets.only(top: 44),
-              child: Column(
-                children: [
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: PrismRelay.lilacSoft,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const SizedBox.square(
-                      dimension: 72,
-                      child: PrismIcon(PrismGlyph.book,
-                          size: 30, color: PrismRelay.plum),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text('No saved prompts',
-                      style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Save a system prompt once, reuse it in any chat.',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  const SizedBox(height: 18),
-                  FilledButton.icon(
-                    onPressed: () {
-                      Haptics.tap();
-                      _editPrompt(context, notifier);
-                    },
-                    icon: const PrismIcon(PrismGlyph.plus, size: 18),
-                    label: const Text('Add a prompt'),
-                  ),
-                ],
+          ? ListView(children: [
+              PrismEmptyState(
+                glyph: PrismGlyph.book,
+                title: 'No saved prompts',
+                message: 'Save a system prompt once, reuse it in any chat.',
+                actionLabel: 'Add a prompt',
+                onAction: () {
+                  Haptics.tap();
+                  _editPrompt(context, notifier);
+                },
               ),
-            )
+            ])
           : ListView(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 20),
               children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(6, 10, 6, 6),
-                  child: Semantics(
-                    header: true,
-                    child: Text(
-                      'LIBRARY',
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                            color: PrismRelay.inkMuted,
-                            fontSize: 11,
-                            letterSpacing: 1.4,
-                            fontWeight: FontWeight.w700,
-                          ),
-                    ),
-                  ),
+                const PrismSectionHeader(
+                  'Library',
+                  padding: EdgeInsets.fromLTRB(6, 10, 6, 6),
                 ),
                 for (var index = 0; index < prompts.length; index++)
                   _PromptRow(
@@ -93,24 +59,13 @@ class PromptLibraryScreen extends ConsumerWidget {
                       existing: prompts[index],
                     ),
                     onDelete: () async {
-                      final confirmed = await showDialog<bool>(
-                        context: context,
-                        builder: (context) => AlertDialog(
-                          title: const Text('Delete prompt?'),
-                          content: Text(prompts[index].name),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(context, false),
-                              child: const Text('Cancel'),
-                            ),
-                            TextButton(
-                              onPressed: () => Navigator.pop(context, true),
-                              child: const Text('Delete'),
-                            ),
-                          ],
-                        ),
+                      final confirmed = await confirmDestructive(
+                        context,
+                        title: 'Delete prompt?',
+                        message: prompts[index].name,
+                        confirmLabel: 'Delete',
                       );
-                      if (confirmed == true && context.mounted) {
+                      if (confirmed && context.mounted) {
                         Haptics.tap();
                         notifier.deletePrompt(prompts[index].name);
                       }

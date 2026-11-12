@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../platform/haptics.dart';
 import '../theme/prism_relay.dart';
+import '../widgets/prism_blocks.dart';
 import '../widgets/prism_icon.dart';
 import 'app_logger.dart';
 
@@ -71,10 +72,11 @@ class _LogViewerScreenState extends State<LogViewerScreen> {
           if (!_showFile)
             PopupMenuButton<String>(
               tooltip: 'Filter level',
-              icon: const PrismIcon(PrismGlyph.log),
-              onSelected: (level) => setState(() => _minLevel = LogLevel.values
-                  .where((item) => item.name == level)
-                  .firstOrNull),
+              icon: const PrismIcon(PrismGlyph.filter),
+              // String values: a null value never reaches onSelected, so
+              // 'all' stands for no filter.
+              onSelected: (level) => setState(
+                  () => _minLevel = LogLevel.values.asNameMap()[level]),
               itemBuilder: (context) => [
                 const PopupMenuItem(value: 'all', child: Text('All')),
                 for (final level in LogLevel.values)
@@ -105,25 +107,14 @@ class _LogViewerScreenState extends State<LogViewerScreen> {
             onPressed: _readingFile
                 ? null
                 : () async {
-                    final confirmed = await showDialog<bool>(
-                      context: context,
-                      builder: (context) => AlertDialog(
-                        title: const Text('Clear logs?'),
-                        content: const Text(
-                            'This permanently erases the diagnostic logs on this device, including saved ones.'),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context, false),
-                            child: const Text('Cancel'),
-                          ),
-                          TextButton(
-                            onPressed: () => Navigator.pop(context, true),
-                            child: const Text('Clear'),
-                          ),
-                        ],
-                      ),
+                    final confirmed = await confirmDestructive(
+                      context,
+                      title: 'Clear logs?',
+                      message: 'This permanently erases the diagnostic logs '
+                          'on this device, including saved ones.',
+                      confirmLabel: 'Clear',
                     );
-                    if (confirmed != true || !mounted) return;
+                    if (!confirmed || !mounted) return;
                     Haptics.tap();
                     await AppLogger.instance.clear();
                     if (mounted) {

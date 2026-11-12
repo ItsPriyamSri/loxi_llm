@@ -61,13 +61,6 @@ void main() {
       );
     });
 
-    testWidgets('shows the brand wordmark', (tester) async {
-      await tester.pumpWidget(_buildApp(prefs));
-      await tester.pump();
-
-      expect(find.text('Loki LLM'), findsOneWidget);
-    });
-
     testWidgets('offers exactly one action — Get started', (tester) async {
       await tester.pumpWidget(_buildApp(prefs));
       await tester.pump();

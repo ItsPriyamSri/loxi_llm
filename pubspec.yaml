@@ -123,7 +123,6 @@ flutter:
   assets:
     - assets/models/bge-small-en-v1.5-int8.onnx
     - assets/vocab.txt
-    - assets/fonts/PlusJakartaSans-var.ttf
     - assets/art/tech-chip.png
     - assets/art/layered_processor.svg
 

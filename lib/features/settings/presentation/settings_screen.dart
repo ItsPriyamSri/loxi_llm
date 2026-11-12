@@ -411,7 +411,6 @@ class _SettingsSheet extends StatelessWidget {
   }
 }
 
-
 Future<void> _howLokiWorks(BuildContext context) {
   return showDialog<void>(
     context: context,
@@ -423,7 +422,7 @@ Future<void> _howLokiWorks(BuildContext context) {
         children: [
           Text('The model lives on your phone.'),
           SizedBox(height: 10),
-          Text('Answers are generated on-device — nothing leaves your phone, even with no network.'),
+          Text('Replies are generated on this phone. Chats and documents are stored here and never uploaded.'),
           SizedBox(height: 10),
           Text('Download a model once and Loki works in airplane mode forever after.'),
           SizedBox(height: 10),

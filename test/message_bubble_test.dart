@@ -134,8 +134,7 @@ void main() {
     });
 
     expect(
-      find.byWidgetPredicate(
-          (widget) => widget is PrismIcon && widget.glyph == PrismGlyph.brokenImage),
+      _glyph(PrismGlyph.brokenImage),
       findsOneWidget,
     );
   });
@@ -198,22 +197,18 @@ void main() {
 
     await tester.pumpWidget(bubble(speaking: true, paused: false));
     expect(
-        find.byWidgetPredicate((widget) =>
-            widget is PrismIcon && widget.glyph == PrismGlyph.pause),
+        _glyph(PrismGlyph.pause),
         findsOneWidget);
     expect(
-        find.byWidgetPredicate(
-            (widget) => widget is PrismIcon && widget.glyph == PrismGlyph.stop),
+        _glyph(PrismGlyph.stop),
         findsOneWidget);
 
     await tester.pumpWidget(bubble(speaking: false, paused: true));
     expect(
-        find.byWidgetPredicate(
-            (widget) => widget is PrismIcon && widget.glyph == PrismGlyph.play),
+        _glyph(PrismGlyph.play),
         findsOneWidget);
     expect(
-        find.byWidgetPredicate(
-            (widget) => widget is PrismIcon && widget.glyph == PrismGlyph.stop),
+        _glyph(PrismGlyph.stop),
         findsOneWidget);
   });
 
@@ -244,3 +239,6 @@ void main() {
     );
   });
 }
+
+Finder _glyph(PrismGlyph glyph) => find.byWidgetPredicate(
+    (widget) => widget is PrismIcon && widget.glyph == glyph);

@@ -145,7 +145,6 @@ class MessageBubble extends StatelessWidget {
                         icon: PrismGlyph.copy,
                         tooltip: 'Copy message',
                         onPressed: onCopy!,
-                        color: PrismRelay.inkSecondary,
                       ),
                     if (onReadAloud != null)
                       _ActionIcon(
@@ -160,14 +159,12 @@ class MessageBubble extends StatelessWidget {
                                 ? 'Pause reading'
                                 : 'Read aloud',
                         onPressed: onReadAloud!,
-                        color: PrismRelay.inkSecondary,
                       ),
                     if (onStopReadAloud != null)
                       _ActionIcon(
                         icon: PrismGlyph.stop,
                         tooltip: 'Stop reading',
                         onPressed: onStopReadAloud!,
-                        color: PrismRelay.inkSecondary,
                       ),
                   ],
                 ),
@@ -185,13 +182,11 @@ class _ActionIcon extends StatefulWidget {
     required this.icon,
     required this.tooltip,
     required this.onPressed,
-    required this.color,
   });
 
   final PrismGlyph icon;
   final String tooltip;
   final VoidCallback onPressed;
-  final Color color;
 
   @override
   State<_ActionIcon> createState() => _ActionIconState();
@@ -223,12 +218,13 @@ class _ActionIconState extends State<_ActionIcon> {
           shownGlyph,
           key: ValueKey(shownGlyph),
           size: 17,
-          color: morph && _justCopied ? PrismRelay.greenInk : widget.color,
+          color: morph && _justCopied
+              ? PrismRelay.greenInk
+              : PrismRelay.inkSecondary,
         ),
       ),
       tooltip: shownTooltip,
       constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-      color: widget.color,
       onPressed: () {
         widget.onPressed();
         Haptics.selection();
@@ -241,7 +237,6 @@ class _ActionIconState extends State<_ActionIcon> {
     );
   }
 }
-
 
 /// Tiny icon + value pair for the metrics row — designed, not raw text.
 class _MetricChip extends StatelessWidget {

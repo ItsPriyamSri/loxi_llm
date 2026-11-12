@@ -9,6 +9,9 @@ import 'prism_icon.dart';
 /// Violet for the model and chat heroes, mint for the document library.
 enum PrismHeroVariant { violet, mint }
 
+/// Soft lilac ink for the status and detail lines on the violet panel.
+const _onVioletSoft = Color(0xFFEDE6FF);
+
 /// The chip illustration worn by the Models and Chat heroes.
 const kChipArt = 'assets/art/tech-chip.png';
 
@@ -30,7 +33,6 @@ class PrismHero extends StatelessWidget {
     this.actionLabel,
     this.actionGlyph,
     this.onAction,
-    this.actionEnabled = true,
     this.artwork = PrismArtwork.relay,
     this.artImageAsset,
     this.cornerActionLabel,
@@ -53,11 +55,10 @@ class PrismHero extends StatelessWidget {
 
   /// Full-width CTA. When [actionLabel] is null the action slot renders
   /// nothing, but its space is kept so the tile does not jump between
-  /// states.
+  /// states. A null [onAction] shows the action disabled.
   final String? actionLabel;
   final PrismGlyph? actionGlyph;
   final VoidCallback? onAction;
-  final bool actionEnabled;
 
   final PrismArtwork artwork;
 
@@ -75,7 +76,6 @@ class PrismHero extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final foreground = _dark ? Colors.white : PrismRelay.ink;
-    final wash = _dark ? const Color(0xFFFFFFFF) : PrismRelay.surface;
 
     final titleStyle = theme.textTheme.headlineLarge!.copyWith(
       fontSize: 22,
@@ -87,7 +87,7 @@ class PrismHero extends StatelessWidget {
       fontSize: 11.5,
       fontWeight: FontWeight.w700,
       letterSpacing: .4,
-      color: _dark ? const Color(0xFFEDE6FF) : PrismRelay.greenInk,
+      color: _dark ? _onVioletSoft : PrismRelay.greenInk,
       fontFeatures: PrismRelay.numbers,
     );
 
@@ -96,8 +96,8 @@ class PrismHero extends StatelessWidget {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               gradient: RadialGradient(colors: [
-                wash.withValues(alpha: .28),
-                wash.withValues(alpha: 0),
+                PrismRelay.surface.withValues(alpha: .28),
+                PrismRelay.surface.withValues(alpha: 0),
               ]),
             ),
             child: PrismArt(artwork: artwork, size: width),
@@ -152,9 +152,7 @@ class PrismHero extends StatelessWidget {
                   style: theme.textTheme.bodySmall!.copyWith(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: _dark
-                        ? const Color(0xFFEDE7FF)
-                        : const Color(0xFF31655A),
+                    color: _dark ? _onVioletSoft : const Color(0xFF31655A),
                   ),
                   child: detail!,
                 ),
@@ -174,7 +172,7 @@ class PrismHero extends StatelessWidget {
                       label: actionLabel!,
                       glyph: actionGlyph,
                       variant: variant,
-                      enabled: actionEnabled && onAction != null,
+                      enabled: onAction != null,
                       onTap: onAction,
                     ),
             ),
@@ -309,8 +307,8 @@ class _HeroFlare extends StatelessWidget {
   }
 }
 
-/// The hero's white/dark raised CTA. Pressed state dips; disabled state
-/// dims ink but keeps its 46 dp target.
+/// The hero's raised CTA. The disabled state dims but keeps its 48 dp
+/// target.
 class _HeroAction extends StatelessWidget {
   const _HeroAction({
     required this.label,
@@ -435,6 +433,43 @@ class _CornerPill extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// The progress bar for the violet hero's progress slot: peach fill on a
+/// translucent white track. Indeterminate while [value] is null, and then
+/// hidden under reduced motion. A known [value] glides over [glide], so
+/// sparse progress updates read as continuous motion.
+class PrismHeroProgress extends StatelessWidget {
+  const PrismHeroProgress({
+    super.key,
+    this.value,
+    this.semanticsLabel,
+    this.glide = Duration.zero,
+  });
+
+  final double? value;
+  final String? semanticsLabel;
+  final Duration glide;
+
+  @override
+  Widget build(BuildContext context) {
+    final reduce = MediaQuery.disableAnimationsOf(context);
+    Widget bar(double? fraction) => LinearProgressIndicator(
+          value: fraction,
+          semanticsLabel: semanticsLabel,
+          minHeight: 5,
+          borderRadius: BorderRadius.circular(6),
+          color: PrismRelay.peach,
+          backgroundColor: const Color(0x3DFFFFFF),
+        );
+    if (value == null) return reduce ? const SizedBox.shrink() : bar(null);
+    if (reduce || glide == Duration.zero) return bar(value);
+    return TweenAnimationBuilder<double>(
+      tween: Tween(end: value),
+      duration: glide,
+      builder: (_, fraction, __) => bar(fraction),
     );
   }
 }

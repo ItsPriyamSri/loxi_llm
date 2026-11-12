@@ -40,7 +40,7 @@ abstract final class PrismRelay {
 
   /// Icon tile (background, ink) pairs used down every list, in a fixed
   /// orange → blue → green → purple rotation. Pick with [identityTile].
-  static const identityTiles = [
+  static const _identityTiles = [
     (peachSurface, amberInk),
     (skySoft, skyInk),
     (mintSurface, greenInk),
@@ -48,7 +48,7 @@ abstract final class PrismRelay {
   ];
 
   static (Color, Color) identityTile(int index) =>
-      identityTiles[index % identityTiles.length];
+      _identityTiles[index % _identityTiles.length];
 
   static const welcomeFace = LinearGradient(
     begin: Alignment(-.42, -1),
@@ -76,8 +76,6 @@ abstract final class PrismRelay {
   static const artStage = 176.0;
   static const motion = Duration(milliseconds: 160);
   static const dockMotion = Duration(milliseconds: 240);
-  static const lift = Duration(milliseconds: 220);
-  static const seat = Duration(milliseconds: 420);
   static const curve = Curves.easeOutCubic;
   static const fontFamily = 'PlusJakartaSans';
   static const shadowRaised = [
@@ -128,6 +126,9 @@ abstract final class PrismRelay {
     scaffoldBackgroundColor: canvas,
     canvasColor: canvas,
     dividerColor: line,
+    // The classic ripple instead of Material 3's InkSparkle, whose fragment
+    // shader fails to decode in the Flutter 3.41.0 test environment (and has
+    // had load issues on some devices). Visually near-identical.
     splashFactory: InkRipple.splashFactory,
     fontFamily: fontFamily,
     textTheme: const TextTheme(
@@ -202,7 +203,7 @@ abstract final class PrismRelay {
       trackColor: WidgetStateProperty.resolveWith(
         (states) => states.contains(WidgetState.selected)
             ? accent
-            : const Color(0xFFDCD9E8),
+            : lineStrong,
       ),
       trackOutlineColor: const WidgetStatePropertyAll(Colors.transparent),
     ),

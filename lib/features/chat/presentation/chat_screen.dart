@@ -47,10 +47,9 @@ String _timeAgo(int updatedAtMs, DateTime now) {
   return '${then.day} ${months[then.month - 1]}';
 }
 
-String _sectionFor(int updatedAtMs, [DateTime? now]) {
+String _sectionFor(int updatedAtMs, DateTime now) {
   final then = DateTime.fromMillisecondsSinceEpoch(updatedAtMs);
-  final today = now ?? DateTime.now();
-  final todayDate = DateTime(today.year, today.month, today.day);
+  final todayDate = DateTime(now.year, now.month, now.day);
   final thenDate = DateTime(then.year, then.month, then.day);
   final days = todayDate.difference(thenDate).inDays;
   if (days <= 0) return 'Today';
@@ -96,16 +95,8 @@ class ChatScreen extends ConsumerWidget {
                 : failed
                     ? const Text('Open Models and try loading it again.')
                     : const Text('Your first reply works offline.'),
-            progress: pending && !MediaQuery.disableAnimationsOf(context)
-                ? const SizedBox(
-                    width: 150,
-                    child: LinearProgressIndicator(
-                      minHeight: 5,
-                      borderRadius: BorderRadius.all(Radius.circular(6)),
-                      color: PrismRelay.peach,
-                      backgroundColor: Color(0x3DFFFFFF),
-                    ),
-                  )
+            progress: pending
+                ? const SizedBox(width: 150, child: PrismHeroProgress())
                 : null,
             actionLabel: pending ? null : 'Open Models',
             actionGlyph: PrismGlyph.models,
@@ -141,12 +132,7 @@ class _ConversationListView extends ConsumerWidget {
 
     final isEmpty = conversationsAsync.valueOrNull?.isEmpty ?? false;
     return Scaffold(
-      backgroundColor: PrismRelay.canvas,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        surfaceTintColor: Colors.transparent,
-        title: const Text('Chat'),
-      ),
+      appBar: AppBar(title: const Text('Chat')),
       body: Stack(
         children: [
           const Positioned.fill(child: PrismAmbientWash()),
@@ -160,21 +146,34 @@ class _ConversationListView extends ConsumerWidget {
             ),
             data: (conversations) {
               if (conversations.isEmpty) {
-                return _EmptyChats(onStart: startNewConversation);
+                return ListView(children: [
+                  PrismEmptyState(
+                    glyph: PrismGlyph.chat,
+                    title: 'No chats yet',
+                    message:
+                        'Everything stays on this device — your chats never leave it.',
+                    actionLabel: 'New chat',
+                    onAction: startNewConversation,
+                  ),
+                ]);
               }
-              final sorted = [...conversations]
-                ..sort((a, b) => b.updatedAtMs.compareTo(a.updatedAtMs));
+              // The repository returns newest first.
+              final now = DateTime.now();
+              final sections = [
+                for (final conv in conversations)
+                  _sectionFor(conv.updatedAtMs, now),
+              ];
               return ListView.builder(
                 padding: const EdgeInsets.fromLTRB(12, 4, 12, 96),
-                itemCount: sorted.length,
+                itemCount: conversations.length,
                 itemBuilder: (context, index) {
-                  final conv = sorted[index];
+                  final conv = conversations[index];
                   final storedId = conv.modelId;
                   final modelName =
                       storedId.isEmpty ? '' : (modelNames[storedId] ?? storedId);
-                  final section = _sectionFor(conv.updatedAtMs);
+                  final section = sections[index];
                   final showsHeader =
-                      index == 0 || _sectionFor(sorted[index - 1].updatedAtMs) != section;
+                      index == 0 || sections[index - 1] != section;
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -186,32 +185,22 @@ class _ConversationListView extends ConsumerWidget {
                         subtitle: conversationMeta(
                           modelName: modelName,
                           updatedAtMs: conv.updatedAtMs,
+                          now: now,
                         ),
-                        showDivider: index != sorted.length - 1 &&
-                            _sectionFor(sorted[index + 1].updatedAtMs) == section,
+                        showDivider: index != conversations.length - 1 &&
+                            sections[index + 1] == section,
                         onTap: () {
                           Haptics.selection();
                           context.go('/chat/${conv.id}');
                         },
                         onDelete: () async {
-                          final confirmed = await showDialog<bool>(
-                            context: context,
-                            builder: (context) => AlertDialog(
-                              title: const Text('Delete conversation?'),
-                              content: Text(conv.title),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(context, false),
-                                  child: const Text('Cancel'),
-                                ),
-                                TextButton(
-                                  onPressed: () => Navigator.pop(context, true),
-                                  child: const Text('Delete'),
-                                ),
-                              ],
-                            ),
+                          final confirmed = await confirmDestructive(
+                            context,
+                            title: 'Delete conversation?',
+                            message: conv.title,
+                            confirmLabel: 'Delete',
                           );
-                          if (confirmed == true && context.mounted) {
+                          if (confirmed && context.mounted) {
                             Haptics.tap();
                             notifier.deleteConversation(conv.id);
                           }
@@ -278,64 +267,6 @@ class _NewChatFab extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _EmptyChats extends StatelessWidget {
-  const _EmptyChats({required this.onStart});
-
-  final VoidCallback onStart;
-
-  @override
-  Widget build(BuildContext context) {
-    final type = Theme.of(context).textTheme;
-    return ListView(
-      padding: const EdgeInsets.only(top: 44),
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Center(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: PrismRelay.lilacSoft,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: const SizedBox.square(
-                    dimension: 72,
-                    child: PrismIcon(PrismGlyph.chat,
-                        size: 30, color: PrismRelay.plum),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 18),
-              Center(
-                child: Text('No chats yet', style: type.headlineSmall),
-              ),
-              const SizedBox(height: 6),
-              Center(
-                child: Text(
-                  'Everything stays on this device — your chats never leave it.',
-                  textAlign: TextAlign.center,
-                  style: type.bodyMedium?.copyWith(color: PrismRelay.inkMuted),
-                ),
-              ),
-              const SizedBox(height: 20),
-              Center(
-                child: FilledButton.icon(
-                  icon: const PrismIcon(PrismGlyph.plus, size: 18),
-                  label: const Text('New chat'),
-                  onPressed: onStart,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
     );
   }
 }

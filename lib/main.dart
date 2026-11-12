@@ -69,7 +69,6 @@ class MyApp extends ConsumerWidget {
       title: 'Loki LLM',
       debugShowCheckedModeBanner: false,
       theme: PrismRelay.light,
-      themeMode: ThemeMode.light,
     );
   }
 }

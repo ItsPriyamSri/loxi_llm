@@ -13,8 +13,8 @@ import '../../features/settings/presentation/settings_screen.dart';
 import '../logging/log_viewer_screen.dart';
 import '../logging/model_io_log_screen.dart';
 import '../providers/shared_preferences_provider.dart';
-import '../widgets/prism_dock.dart';
 import '../theme/prism_relay.dart';
+import '../widgets/prism_dock.dart';
 
 part 'app_router.g.dart';
 
@@ -119,13 +119,12 @@ GoRouter appRouter(Ref ref) {
                   GoRoute(
                     path: ':conversationId',
                     pageBuilder: (context, state) => _pushPage(
-                          state,
-                          ConversationScreen(
-                            conversationId:
-                                state.pathParameters['conversationId']!,
-                          ),
-                          begin: const Offset(0.12, 0),
-                        ),
+                      state,
+                      ConversationScreen(
+                        conversationId: state.pathParameters['conversationId']!,
+                      ),
+                      begin: const Offset(0.12, 0),
+                    ),
                   ),
                 ],
               ),

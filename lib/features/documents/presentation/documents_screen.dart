@@ -43,22 +43,13 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
   Future<void> _delete(Document document) async {
     setState(() => _deleting = true);
     try {
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Remove document?'),
-          content: Text(document.name),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Cancel')),
-            TextButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('Remove')),
-          ],
-        ),
+      final confirmed = await confirmDestructive(
+        context,
+        title: 'Remove document?',
+        message: document.name,
+        confirmLabel: 'Remove',
       );
-      if (confirmed == true && mounted) {
+      if (confirmed && mounted) {
         Haptics.tap();
         await ref
             .read(documentsNotifierProvider.notifier)
@@ -76,6 +67,8 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(documentsNotifierProvider);
+    // The notifier drops its list while importing and on an error; keep
+    // showing the last one instead of an empty library.
     final data = state.valueOrNull;
     if (data != null) _lastDocuments = data;
     final importing = _pickerOpen && state.isLoading;
@@ -103,7 +96,6 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
             detail: const Text('Import a PDF, DOCX or TXT file up to 10 MB.'),
             actionLabel: importing ? 'Importing…' : 'Import document',
             actionGlyph: PrismGlyph.plus,
-            actionEnabled: canImport,
             onAction: canImport ? _import : null,
           ),
           if (importing && !MediaQuery.disableAnimationsOf(context))

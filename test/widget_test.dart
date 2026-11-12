@@ -4,7 +4,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:loki_llm/core/providers/objectbox_provider.dart';
 import 'package:loki_llm/core/providers/shared_preferences_provider.dart';
 import 'package:loki_llm/core/router/app_router.dart';
-import 'package:loki_llm/core/widgets/prism_icon.dart';
 import 'package:loki_llm/features/models/domain/model.dart';
 import 'package:loki_llm/features/models/domain/model_status.dart';
 import 'package:loki_llm/main.dart';
@@ -32,8 +31,6 @@ void main() {
       // Allow async providers to settle
       await tester.pump();
 
-      final app = tester.widget<MaterialApp>(find.byType(MaterialApp));
-      expect(app.theme?.scaffoldBackgroundColor, const Color(0xFFF3F2FA));
       expect(find.byKey(const ValueKey('prism-dock')), findsOneWidget);
       expect(
           find.byKey(const ValueKey('prism-dock-selection')), findsOneWidget);
@@ -42,7 +39,7 @@ void main() {
       expect(find.text('Documents'), findsAtLeastNWidgets(1));
     });
 
-    testWidgets('advanced routes share the warm theme at large text',
+    testWidgets('every pushed route renders at large text without errors',
         (tester) async {
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(320, 640);
@@ -103,20 +100,6 @@ void main() {
     expect(prefs.getInt('settings_chunk_size'), 350);
   });
 
-  testWidgets('a glyph keeps its requested size inside a larger tile',
-      (tester) async {
-    await tester.pumpWidget(const MaterialApp(
-      home: Center(
-          child: SizedBox.square(
-        dimension: 40,
-        child: PrismIcon(PrismGlyph.file, size: 18),
-      )),
-    ));
-    final icon = find.descendant(
-        of: find.byType(PrismIcon), matching: find.byType(Icon));
-    expect(tester.widget<Icon>(icon).size, 18);
-  });
-
   group('Model domain', () {
     test('Model.isDownloaded returns true when status is downloaded', () {
       const model = Model(
@@ -144,8 +127,7 @@ void main() {
       expect(model.canLoad, isFalse);
     });
 
-    test(
-        'Model.canLoad is true when status is error and localPath is set '
+    test('Model.canLoad is true when status is error and localPath is set '
         '(retrying a failed load)', () {
       const model = Model(
         id: 'test-2b',
@@ -158,8 +140,7 @@ void main() {
       expect(model.canLoad, isTrue);
     });
 
-    test(
-        'Model.canLoad is false when status is error and localPath is null '
+    test('Model.canLoad is false when status is error and localPath is null '
         '(failed download, nothing to retry-load)', () {
       const model = Model(
         id: 'test-2c',

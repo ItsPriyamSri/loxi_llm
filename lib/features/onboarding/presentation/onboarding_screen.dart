@@ -25,15 +25,15 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
     duration: const Duration(milliseconds: 900),
   );
 
-  static const _riseCurve = Curves.easeOutCubic;
+  // Built once: a CurvedAnimation listens to the controller until disposed.
+  late final _artWindow = _window(.02, .52);
+  late final _copyWindow = _window(.2, .78);
+  late final _buttonWindow = _window(.42, 1);
 
-  Animation<double> _window(double begin, double end) => Tween<double>(
-        begin: 0,
-        end: 1,
-      ).animate(CurvedAnimation(
+  CurvedAnimation _window(double begin, double end) => CurvedAnimation(
         parent: _entrance,
-        curve: Interval(begin, end, curve: _riseCurve),
-      ));
+        curve: Interval(begin, end, curve: Curves.easeOutCubic),
+      );
 
   @override
   void didChangeDependencies() {
@@ -47,6 +47,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
 
   @override
   void dispose() {
+    _artWindow.dispose();
+    _copyWindow.dispose();
+    _buttonWindow.dispose();
     _entrance.dispose();
     super.dispose();
   }
@@ -84,9 +87,6 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
   @override
   Widget build(BuildContext context) {
     final type = Theme.of(context).textTheme;
-    final artWindow = _window(.02, .52);
-    final copyWindow = _window(.2, .78);
-    final buttonWindow = _window(.42, 1);
 
     return Scaffold(
       body: DecoratedBox(
@@ -139,7 +139,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                             .clamp(170.0, 290.0);
                         return Center(
                           child: _rise(
-                            artWindow,
+                            _artWindow,
                             ExcludeSemantics(
                               child: PrismArt(
                                 artwork: PrismArtwork.relay,
@@ -157,7 +157,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _rise(
-                          copyWindow,
+                          _copyWindow,
                           Text(
                             'Your AI, on\nyour device.',
                             style: type.displaySmall?.copyWith(
@@ -169,7 +169,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                         ),
                         const SizedBox(height: 10),
                         _rise(
-                          copyWindow,
+                          _copyWindow,
                           Text(
                             'Download a model once. Then start a conversation, even offline.',
                             style: type.bodyLarge?.copyWith(
@@ -185,7 +185,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                   Padding(
                     padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
                     child: _rise(
-                      buttonWindow,
+                      _buttonWindow,
                       SizedBox(
                         width: double.infinity,
                         height: 56,

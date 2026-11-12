@@ -37,7 +37,6 @@ class _ModelsScreenState extends ConsumerState<ModelsScreen> {
   /// that model still reads "Could not load model".
   ({String modelId, String reason})? _loadFailure;
   final _downloadRequests = <String>{};
-  final _stoppedDownloads = <String>{};
 
   Future<void> _sideload() async {
     setState(() => _choosingFile = true);
@@ -103,7 +102,6 @@ class _ModelsScreenState extends ConsumerState<ModelsScreen> {
       _focusedId = model.id;
       if (_loadFailure?.modelId == model.id) _loadFailure = null;
       _downloadRequests.add(model.id);
-      _stoppedDownloads.remove(model.id);
     });
     Haptics.tap();
     try {
@@ -118,7 +116,6 @@ class _ModelsScreenState extends ConsumerState<ModelsScreen> {
   void _stopDownload(Model model) {
     Haptics.tap();
     ref.read(modelsNotifierProvider.notifier).cancelDownload(model.id);
-    setState(() => _stoppedDownloads.add(model.id));
   }
 
   Future<void> _unload(Model model) async {
@@ -176,24 +173,16 @@ class _ModelsScreenState extends ConsumerState<ModelsScreen> {
         models.firstOrNull;
 
     _ModelPresentation presentation(Model model) {
-      final live = service.isDownloading(model.id);
-      final isReady = ready?.id == model.id;
-      final stopped = _stoppedDownloads.contains(model.id) &&
-          !live &&
-          (model.status == ModelStatus.available ||
-              model.status == ModelStatus.downloading ||
-              model.status == ModelStatus.error && model.localPath == null);
-      final status = isReady
+      // The engine, not the saved row, says which model is loaded.
+      final status = ready?.id == model.id
           ? ModelStatus.loaded
-          : stopped
-              ? ModelStatus.paused
-              : model.status == ModelStatus.loaded
-                  ? ModelStatus.downloaded
-                  : model.status;
+          : model.status == ModelStatus.loaded
+              ? ModelStatus.downloaded
+              : model.status;
       return _ModelPresentation(
         model: model,
         status: status,
-        live: live,
+        live: service.isDownloading(model.id),
         speed: notifier.downloadSpeed[model.id],
       );
     }
@@ -271,8 +260,12 @@ class _ModelsScreenState extends ConsumerState<ModelsScreen> {
                   overflow: TextOverflow.ellipsis,
                 ),
                 progress: item.live || item.status == ModelStatus.loading
-                    ? _TransferProgress(
-                        key: ValueKey(item.model.id), value: item.fraction)
+                    ? PrismHeroProgress(
+                        key: ValueKey(item.model.id),
+                        value: item.fraction,
+                        semanticsLabel: item.live ? 'Download progress' : null,
+                        glide: kDownloadProgressInterval,
+                      )
                     : null,
                 actionLabel: item.actionLabel,
                 actionGlyph: item.actionIcon,
@@ -281,7 +274,6 @@ class _ModelsScreenState extends ConsumerState<ModelsScreen> {
                 onCornerAction: heroLoaded && !_unloading
                     ? () => _unload(item.model)
                     : null,
-                actionEnabled: heroAction != null,
                 onAction: heroAction,
               ),
             const SizedBox(height: 22),
@@ -312,56 +304,30 @@ class _ModelsScreenState extends ConsumerState<ModelsScreen> {
                 onRetry: () => ref.invalidate(modelsNotifierProvider),
               )
             else if (models.isEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 44),
-                child: Column(
-                  children: [
-                    DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: PrismRelay.lilacSoft,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: const SizedBox.square(
-                        dimension: 72,
-                        child: PrismIcon(PrismGlyph.relay,
-                            size: 30, color: PrismRelay.plum),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Text('No models yet',
-                        style: Theme.of(context).textTheme.titleMedium),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Import a model file from this phone to get started.',
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                    const SizedBox(height: 18),
-                    FilledButton.icon(
-                      onPressed: loading || _choosingFile ? null : _sideload,
-                      icon: const PrismIcon(PrismGlyph.plus, size: 18),
-                      label: Text(_choosingFile ? 'Opening…' : 'Import model'),
-                    ),
-                  ],
-                ),
+              PrismEmptyState(
+                glyph: PrismGlyph.relay,
+                title: 'No models yet',
+                message: 'Import a model file from this phone to get started.',
+                actionLabel: _choosingFile ? 'Opening…' : 'Import model',
+                onAction: loading || _choosingFile ? null : _sideload,
               )
             else
               Column(
                 children: [
                   const Divider(height: 1),
-                  for (var index = 0; index < models.length; index++) ...[
+                  for (final (index, row) in models.map(presentation).indexed) ...[
                     _ModelRow(
-                      key: ValueKey('model-${models[index].id}'),
+                      key: ValueKey('model-${row.model.id}'),
                       index: index,
-                      item: presentation(models[index]),
-                      selected: models[index].id == selected?.id,
+                      item: row,
+                      selected: row.model.id == selected?.id,
                       onSelect: loading
                           ? null
                           : () {
                               Haptics.selection();
-                              setState(() => _focusedId = models[index].id);
+                              setState(() => _focusedId = row.model.id);
                             },
-                      onAction: actionFor(presentation(models[index])),
+                      onAction: actionFor(row),
                     ),
                     if (index != models.length - 1)
                       const Divider(height: 1),
@@ -778,36 +744,6 @@ class _SkeletonBar extends StatelessWidget {
           child: SizedBox(height: height),
         ),
       );
-}
-
-/// The transfer bar inside the violet hero: translucent white track, peach
-/// fill. Indeterminate until the first byte count arrives.
-class _TransferProgress extends StatelessWidget {
-  const _TransferProgress({super.key, required this.value});
-
-  final double? value;
-
-  @override
-  Widget build(BuildContext context) {
-    final reduce = MediaQuery.disableAnimationsOf(context);
-    Widget indicator(double? fraction) => LinearProgressIndicator(
-          value: fraction,
-          semanticsLabel:
-              fraction == null ? 'In progress' : 'Download progress',
-          minHeight: 5,
-          borderRadius: BorderRadius.circular(6),
-          color: PrismRelay.peach,
-          backgroundColor: const Color(0x3DFFFFFF),
-        );
-    if (value == null || reduce) return indicator(value);
-    // Glides across one update interval, so the bar moves continuously
-    // between the four-a-second progress updates.
-    return TweenAnimationBuilder<double>(
-      tween: Tween(end: value),
-      duration: kDownloadProgressInterval,
-      builder: (_, progress, __) => indicator(progress),
-    );
-  }
 }
 
 /// Quiet recommendation pill — same warm grey for every badge so only the
