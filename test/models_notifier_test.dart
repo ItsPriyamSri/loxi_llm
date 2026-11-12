@@ -109,4 +109,39 @@ void main() {
       );
     });
   });
+
+  group('shouldPublishDownloadProgress', () {
+    final start = DateTime(2026, 11, 12, 12);
+
+    test('publishes the first tick', () {
+      expect(
+          shouldPublishDownloadProgress(
+              progress: .01, now: start, lastPublished: null),
+          isTrue);
+    });
+
+    test('drops ticks inside the interval and publishes after it', () {
+      expect(
+          shouldPublishDownloadProgress(
+              progress: .2,
+              now: start.add(const Duration(milliseconds: 40)),
+              lastPublished: start),
+          isFalse);
+      expect(
+          shouldPublishDownloadProgress(
+              progress: .2,
+              now: start.add(kDownloadProgressInterval),
+              lastPublished: start),
+          isTrue);
+    });
+
+    test('always publishes completion', () {
+      expect(
+          shouldPublishDownloadProgress(
+              progress: 1.0,
+              now: start.add(const Duration(milliseconds: 1)),
+              lastPublished: start),
+          isTrue);
+    });
+  });
 }

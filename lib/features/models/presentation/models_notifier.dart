@@ -111,6 +111,22 @@ List<Model> staleModelsToReconcile(List<Model> models) {
   ];
 }
 
+/// How often a live download saves its progress and rebuilds the catalog.
+const kDownloadProgressInterval = Duration(milliseconds: 250);
+
+/// Whether a download progress tick should be saved and shown. Dio reports
+/// every network chunk, hundreds of times a second; saving and rebuilding on
+/// each one made the Models screen jitter. Four updates a second, plus the
+/// final one, reads as smooth with the progress bar's tween.
+bool shouldPublishDownloadProgress({
+  required double progress,
+  required DateTime now,
+  required DateTime? lastPublished,
+}) =>
+    progress >= 1.0 ||
+    lastPublished == null ||
+    now.difference(lastPublished) >= kDownloadProgressInterval;
+
 @riverpod
 class ModelsNotifier extends _$ModelsNotifier {
   /// Transient live download speed in bytes/second, keyed by model id. Not
@@ -171,14 +187,24 @@ class ModelsNotifier extends _$ModelsNotifier {
     final url = huggingFaceDownloadUrl(model);
     final mmprojUrl = huggingFaceMmprojDownloadUrl(model);
 
+    DateTime? lastPublished;
     try {
       final result = await service.downloadModel(
         model: model,
         downloadUrl: url,
         mmprojDownloadUrl: mmprojUrl,
         onProgress: (progress, bytesPerSecond) {
+          final now = DateTime.now();
+          if (!shouldPublishDownloadProgress(
+            progress: progress,
+            now: now,
+            lastPublished: lastPublished,
+          )) {
+            return;
+          }
           final current = repo.getById(modelId);
           if (current != null) {
+            lastPublished = now;
             downloadSpeed[modelId] = bytesPerSecond;
             repo.save(current.copyWith(downloadProgress: progress));
             ref.invalidateSelf();

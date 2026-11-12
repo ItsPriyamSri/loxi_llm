@@ -673,24 +673,19 @@ class _ModelRow extends StatelessWidget {
                         style: theme.textTheme.bodySmall,
                       ),
                       if (showDownloading)
+                        // Plain text with fixed-width digits: the numbers
+                        // tick in place instead of cross-fading each update.
                         Padding(
                           padding: const EdgeInsets.only(top: 2),
-                          child: AnimatedSwitcher(
-                            duration: MediaQuery.disableAnimationsOf(context)
-                                ? Duration.zero
-                                : PrismRelay.motion,
-                            switchInCurve: PrismRelay.curve,
-                            switchOutCurve: PrismRelay.curve,
-                            child: Text(
-                              item.label,
-                              key: ValueKey(item.label),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.labelMedium?.copyWith(
-                                color: PrismRelay.plum,
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.w700,
-                              ),
+                          child: Text(
+                            item.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.labelMedium?.copyWith(
+                              color: PrismRelay.plum,
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700,
+                              fontFeatures: PrismRelay.numbers,
                             ),
                           ),
                         )
@@ -805,9 +800,11 @@ class _TransferProgress extends StatelessWidget {
           backgroundColor: const Color(0x3DFFFFFF),
         );
     if (value == null || reduce) return indicator(value);
+    // Glides across one update interval, so the bar moves continuously
+    // between the four-a-second progress updates.
     return TweenAnimationBuilder<double>(
       tween: Tween(end: value),
-      duration: const Duration(milliseconds: 120),
+      duration: kDownloadProgressInterval,
       builder: (_, progress, __) => indicator(progress),
     );
   }

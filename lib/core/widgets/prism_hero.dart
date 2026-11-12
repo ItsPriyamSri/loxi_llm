@@ -88,6 +88,7 @@ class PrismHero extends StatelessWidget {
       fontWeight: FontWeight.w700,
       letterSpacing: .4,
       color: _dark ? const Color(0xFFEDE6FF) : PrismRelay.greenInk,
+      fontFeatures: PrismRelay.numbers,
     );
 
     Widget artFor(double width) => artImageAsset == null
