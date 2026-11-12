@@ -87,6 +87,35 @@ void main() {
     expect(models.cancelled, ['second']);
   });
 
+  testWidgets('a tile leaving selection never darkens mid-animation',
+      (tester) async {
+    await tester.pumpWidget(ProviderScope(
+      overrides: [modelsNotifierProvider.overrideWith(_Catalog.new)],
+      child: MaterialApp(theme: PrismRelay.light, home: const ModelsScreen()),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Second model'));
+    for (var frame = 0; frame < 10; frame++) {
+      await tester.pump(const Duration(milliseconds: 16));
+      final boxes = tester.widgetList<DecoratedBox>(find.descendant(
+          of: find.byKey(const ValueKey('model-gemma3-270m-it')),
+          matching: find.byType(DecoratedBox)));
+      for (final box in boxes) {
+        final decoration = box.decoration;
+        if (decoration is! BoxDecoration || decoration.color == null) continue;
+        final color = decoration.color!;
+        // Any visible fill must stay in the light lilac family; a lerp to
+        // Colors.transparent passes through translucent grey.
+        if (color.a > .02) {
+          expect(color.r, greaterThan(.85), reason: 'frame $frame: $color');
+          expect(color.g, greaterThan(.85), reason: 'frame $frame: $color');
+        }
+      }
+    }
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('a failed load keeps its reason in the hero', (tester) async {
     final models = _Catalog();
     await tester.pumpWidget(ProviderScope(

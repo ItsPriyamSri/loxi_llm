@@ -624,10 +624,16 @@ class _ModelRow extends StatelessWidget {
                 : PrismRelay.motion,
             curve: PrismRelay.curve,
             decoration: BoxDecoration(
-              color: selected ? PrismRelay.lilacSoft : Colors.transparent,
+              // Fade to a clear lilac, not Colors.transparent: that is
+              // transparent black, and the lerp would flash grey.
+              color: selected
+                  ? PrismRelay.lilacSoft
+                  : PrismRelay.lilacSoft.withValues(alpha: 0),
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: selected ? PrismRelay.periwinkle : Colors.transparent,
+                color: selected
+                    ? PrismRelay.periwinkle
+                    : PrismRelay.periwinkle.withValues(alpha: 0),
                 width: 1.5,
               ),
             ),
