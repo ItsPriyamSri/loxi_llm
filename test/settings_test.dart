@@ -1,7 +1,9 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loki_llm/core/providers/shared_preferences_provider.dart';
 import 'package:loki_llm/features/settings/domain/generation_settings.dart';
+import 'package:loki_llm/features/settings/presentation/prompt_library_screen.dart';
 import 'package:loki_llm/features/settings/presentation/settings_notifier.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -74,6 +76,7 @@ void main() {
               maxTokens: 4000,
             ),
       );
+      expect(notifier.generationFor('lfm3-1.7b').temperature, 0.1);
 
       final saved = notifier.generationFor('phi3-mini-4k-q4km');
       expect(saved.temperature, 1.2);
@@ -97,6 +100,23 @@ void main() {
             .maxTokensForLoadedContext(2048),
         2048 - GenerationSettings.promptRoom,
       );
+
+      notifier.saveGeneration(
+        'phi3-mini-4k-q4km',
+        GenerationSettings.defaultsFor('phi3-mini-4k-q4km'),
+      );
+      expect(notifier.generationFor('phi3-mini-4k-q4km').temperature, 0.7);
+
+      notifier.saveGeneration(
+        'lfm3-1.7b',
+        notifier.generationFor('lfm3-1.7b').copyWith(temperature: 0.9),
+      );
+      notifier.saveGeneration(
+        'lfm3-1.7b',
+        GenerationSettings.defaultsFor('lfm3-1.7b'),
+      );
+      expect(notifier.generationFor('lfm3-1.7b').temperature, 0.1);
+      expect(notifier.generationFor('phi3-mini-4k-q4km').temperature, 0.7);
     });
 
     test('setChunkSize writes the new value to SharedPreferences', () async {
@@ -236,5 +256,71 @@ void main() {
       notifier.setSpeechRate(4);
       expect(container.read(settingsNotifierProvider).speechRate, 1.0);
     });
+
+    test('saved prompts replace the same name and leave the others', () async {
+      final (container, _) = await makeContainer();
+      addTearDown(container.dispose);
+      final notifier = container.read(settingsNotifierProvider.notifier);
+
+      expect(notifier.savedPrompts(), isEmpty);
+
+      notifier.savePrompt('Translator', 'Translate to English.');
+      notifier.savePrompt('Brief', 'Answer in one sentence.');
+      notifier.savePrompt('Translator', 'Translate to Hindi.');
+
+      final prompts = notifier.savedPrompts();
+      expect(prompts.map((prompt) => prompt.name), ['Brief', 'Translator']);
+      expect(
+        prompts.firstWhere((prompt) => prompt.name == 'Translator').body,
+        'Translate to Hindi.',
+      );
+
+      notifier.deletePrompt('Brief');
+      expect(notifier.savedPrompts().single.name, 'Translator');
+      notifier.savePrompt('   ', 'ignored');
+      expect(notifier.savedPrompts().single.name, 'Translator');
+    });
+  });
+
+  testWidgets('a blank name or a taken rename stays in the editor',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final container = ProviderContainer(
+      overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+    );
+    addTearDown(container.dispose);
+    final notifier = container.read(settingsNotifierProvider.notifier);
+    notifier.savePrompt('Translator', 'English');
+    notifier.savePrompt('Brief', 'Short');
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: PromptLibraryScreen()),
+      ),
+    );
+
+    await tester.tap(find.text('Brief'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'Translator');
+    await tester.tap(find.widgetWithText(TextButton, 'Save'));
+    await tester.pump();
+
+    expect(find.text('That name is already used'), findsOneWidget);
+    expect(
+      notifier.savedPrompts().map((prompt) => prompt.name),
+      ['Translator', 'Brief'],
+    );
+
+    await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Add prompt'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(TextButton, 'Save'));
+    await tester.pump();
+
+    expect(find.text('Enter a name'), findsOneWidget);
+    expect(find.text('Add prompt'), findsOneWidget);
   });
 }
