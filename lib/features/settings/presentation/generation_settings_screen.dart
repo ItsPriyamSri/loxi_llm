@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/providers/inference_provider.dart';
 import '../../../core/platform/haptics.dart';
 import '../../../core/theme/prism_relay.dart';
+import '../../../core/widgets/prism_blocks.dart';
 import '../../../core/widgets/prism_icon.dart';
 import '../domain/generation_settings.dart';
 import 'settings_notifier.dart';
@@ -31,22 +32,20 @@ class GenerationSettingsScreen extends ConsumerWidget {
       ),
       body: model == null || settings == null
           ? ListView(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
               children: [
-                Card(
-                  child: ListTile(
-                    title: Text(inference.isLoading
-                        ? 'Loading model…'
-                        : inference.hasError
-                            ? 'Could not load model'
-                            : 'Load a model to edit its settings'),
-                    trailing: !inference.isLoading &&
-                            GoRouter.maybeOf(context) != null
-                        ? TextButton(
-                            onPressed: () => context.go('/models'),
-                            child: const Text('Models'))
-                        : null,
-                  ),
+                PrismNotice(
+                  message: inference.isLoading
+                      ? 'Loading model…'
+                      : inference.hasError
+                          ? 'Could not load model'
+                          : 'Load a model to edit its settings',
+                  failed: inference.hasError,
+                  actionLabel: !inference.isLoading &&
+                          GoRouter.maybeOf(context) != null
+                      ? 'Models'
+                      : null,
+                  onAction: () => context.go('/models'),
                 ),
               ],
             )
@@ -108,7 +107,7 @@ class _Sliders extends StatelessWidget {
     final replyLength = settings.maxTokensForLoadedContext(loadedContext);
     final maxTokensLimit = loadedContext - GenerationSettings.promptRoom;
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
       children: [
         Card(
           color: PrismRelay.lilacSoft,
@@ -116,9 +115,8 @@ class _Sliders extends StatelessWidget {
               leading: const PrismIcon(PrismGlyph.relay, color: PrismRelay.plum),
               title: Text(modelName)),
         ),
-        const SizedBox(height: 24),
-        Text('Next message', style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 4),
+        const PrismSectionHeader('Next message',
+            padding: EdgeInsets.fromLTRB(0, 24, 0, 4)),
         Text(
           'Used on the next reply, including a tool-using turn.',
           style: Theme.of(context).textTheme.bodySmall,
@@ -177,12 +175,8 @@ class _Sliders extends StatelessWidget {
           caption: settings.repeatPenalty.toStringAsFixed(2),
           onChanged: (v) => onChanged(settings.copyWith(repeatPenalty: v)),
         ),
-        const Divider(height: 32),
-        Text(
-          'When the model is loaded',
-          style: Theme.of(context).textTheme.titleMedium,
-        ),
-        const SizedBox(height: 4),
+        const PrismSectionHeader('When the model is loaded',
+            padding: EdgeInsets.fromLTRB(0, 24, 0, 4)),
         Text(
           'Takes effect the next time this model is loaded.',
           style: Theme.of(context).textTheme.bodySmall,
@@ -211,14 +205,16 @@ class _Sliders extends StatelessWidget {
           value: settings.batchSize,
           onChanged: (v) => onChanged(settings.copyWith(batchSize: v)),
         ),
+        const SizedBox(height: 8),
         Align(
-          alignment: Alignment.centerLeft,
-          child: OutlinedButton(
+          alignment: AlignmentDirectional.centerStart,
+          child: TextButton.icon(
             onPressed: () {
               Haptics.tap();
               onChanged(GenerationSettings.defaultsFor(modelId));
             },
-            child: const Text('Reset to this model\'s defaults'),
+            icon: const PrismIcon(PrismGlyph.refresh, size: 18),
+            label: const Text('Reset to this model\'s defaults'),
           ),
         ),
       ],
@@ -239,8 +235,15 @@ class _Sliders extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 16),
-        Text('$label: $caption',
-            style: Theme.of(context).textTheme.titleMedium),
+        // Same label row as the Settings sliders: name left, value right.
+        Row(children: [
+          Expanded(
+              child:
+                  Text(label, style: Theme.of(context).textTheme.titleSmall)),
+          Text(caption,
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color: PrismRelay.accent, fontFeatures: PrismRelay.numbers)),
+        ]),
         Slider(
           value: value.clamp(min, max),
           min: min,

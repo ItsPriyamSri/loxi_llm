@@ -86,6 +86,20 @@ void main() {
     expect(find.byTooltip('System prompt'), findsOneWidget);
   });
 
+  testWidgets('the shortcut row hides while the keyboard is up',
+      (tester) async {
+    addTearDown(tester.view.reset);
+    final container = await _openChat(_FakeTts(), blank: true);
+    await tester.pumpWidget(_app(container));
+    await tester.pumpAndSettle();
+    final quick = find.byKey(const ValueKey('quick-shortcuts'));
+    expect(quick, findsOneWidget);
+
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+    await tester.pumpAndSettle();
+    expect(quick, findsNothing);
+  });
+
   testWidgets('composer controls remain reachable at 200% with the keyboard',
       (tester) async {
     tester.view.devicePixelRatio = 1;

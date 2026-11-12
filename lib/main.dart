@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'core/database/objectbox_store.dart';
@@ -16,6 +17,14 @@ void main() async {
   // Run inside a guarded zone so uncaught async errors reach AppLogger.
   await runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
+
+    // The bundled font's OFL licence, listed with the package licences.
+    LicenseRegistry.addLicense(() async* {
+      yield LicenseEntryWithLineBreaks(
+        const ['Plus Jakarta Sans'],
+        await rootBundle.loadString('assets/fonts/OFL.txt'),
+      );
+    });
 
     await AppLogger.instance.init();
     await ModelIoLogger.instance.init();

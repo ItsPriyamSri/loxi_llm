@@ -156,7 +156,7 @@ void main() {
               .single
               .content,
           'Check the first token');
-      expect(find.text('No reply generated'), findsOneWidget);
+      expect(find.text('No reply generated. Try sending again.'), findsOneWidget);
       expect(find.byTooltip('Read aloud'), findsNothing);
     });
 

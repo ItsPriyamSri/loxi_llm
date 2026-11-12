@@ -73,37 +73,40 @@ class ChatScreen extends ConsumerWidget {
     final failed = backendAsync.hasError;
     return Scaffold(
       appBar: AppBar(title: const Text('Chat')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
-        children: [
-          PrismHero(
-            variant: PrismHeroVariant.violet,
-            artImageAsset: kChipArt,
-            status: pending ? 'Loading' : failed ? 'Could not load' : 'No model',
-            statusGlyph: pending
-                ? PrismGlyph.relay
-                : failed
-                    ? PrismGlyph.warn
-                    : PrismGlyph.lock,
-            title: pending
-                ? 'Warming up…'
-                : failed
-                    ? 'Could not load model'
-                    : 'Load a model to chat',
-            detail: pending
-                ? const Text('This happens once per model.')
-                : failed
-                    ? const Text('Open Models and try loading it again.')
-                    : const Text('Your first reply works offline.'),
-            progress: pending
-                ? const SizedBox(width: 150, child: PrismHeroProgress())
-                : null,
-            actionLabel: pending ? null : 'Open Models',
-            actionGlyph: PrismGlyph.models,
-            onAction: pending ? null : () => context.go('/models'),
-          ),
-        ],
-      ),
+      body: Stack(children: [
+        const Positioned.fill(child: PrismAmbientWash()),
+        ListView(
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
+          children: [
+            PrismHero(
+              variant: PrismHeroVariant.violet,
+              artImageAsset: kChipArt,
+              status: pending ? 'Loading' : failed ? 'Could not load' : 'No model',
+              statusGlyph: pending
+                  ? PrismGlyph.relay
+                  : failed
+                      ? PrismGlyph.warn
+                      : PrismGlyph.models,
+              title: pending
+                  ? 'Warming up…'
+                  : failed
+                      ? 'Could not load model'
+                      : 'Load a model to chat',
+              detail: pending
+                  ? const Text('Loading the model into memory.')
+                  : failed
+                      ? const Text('Open Models and try loading it again.')
+                      : const Text('Chats run on this phone. No internet needed.'),
+              progress: pending
+                  ? const SizedBox(width: 150, child: PrismHeroProgress())
+                  : null,
+              actionLabel: pending ? null : 'Open Models',
+              actionGlyph: PrismGlyph.models,
+              onAction: pending ? null : () => context.go('/models'),
+            ),
+          ],
+        ),
+      ]),
     );
   }
 }
@@ -138,11 +141,16 @@ class _ConversationListView extends ConsumerWidget {
           const Positioned.fill(child: PrismAmbientWash()),
           conversationsAsync.when(
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => Center(
-              child: TextButton(
-                onPressed: () => ref.invalidate(conversationListNotifierProvider),
-                child: const Text('Could not load chats. Try again'),
-              ),
+            error: (e, _) => ListView(
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
+              children: [
+                PrismErrorBanner(
+                  message: 'Could not load chats.',
+                  retryTooltip: 'Reload chats',
+                  onRetry: () =>
+                      ref.invalidate(conversationListNotifierProvider),
+                ),
+              ],
             ),
             data: (conversations) {
               if (conversations.isEmpty) {
@@ -197,7 +205,9 @@ class _ConversationListView extends ConsumerWidget {
                           final confirmed = await confirmDestructive(
                             context,
                             title: 'Delete conversation?',
-                            message: conv.title,
+                            message:
+                                '"${conv.title}" and its messages will be '
+                                'deleted from this phone.',
                             confirmLabel: 'Delete',
                           );
                           if (confirmed && context.mounted) {
@@ -326,9 +336,10 @@ class _ConversationRow extends StatelessWidget {
                             .textTheme
                             .titleSmall
                             ?.copyWith(
+                              // Regular weight, so bold carried over from
+                              // the first message still reads as bold.
                               fontSize: 15.5,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: -0.2,
+                              fontWeight: FontWeight.w500,
                             ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -337,7 +348,7 @@ class _ConversationRow extends StatelessWidget {
                       const SizedBox(height: 2),
                       Text(
                         subtitle,
-                        maxLines: 1,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context)
                             .textTheme

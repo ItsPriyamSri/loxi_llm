@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/prism_relay.dart';
+import '../../../core/widgets/prism_blocks.dart';
 import '../../../core/widgets/prism_icon.dart';
 import '../../agent/agent_tool_catalog.dart';
 import '../domain/app_settings.dart';
@@ -75,7 +76,7 @@ class SettingsScreen extends ConsumerWidget {
                 icon: PrismGlyph.tools,
                 tint: PrismRelay.skySoft,
                 ink: PrismRelay.skyInk,
-                value: '${settings.enabledToolNames.length}',
+                value: '${settings.enabledToolNames.length} on',
                 onTap: () => _showTools(context),
               ),
             ],
@@ -101,7 +102,7 @@ class SettingsScreen extends ConsumerWidget {
                 detail: settings.modelIoLoggingEnabled
                     ? 'Review recorded inputs and replies'
                     : 'Turn recording on to capture traces',
-                icon: PrismGlyph.log,
+                icon: PrismGlyph.chat,
                 tint: PrismRelay.mintSurface,
                 ink: PrismRelay.greenInk,
                 onTap: () => context.push('/model-io'),
@@ -122,7 +123,7 @@ class SettingsScreen extends ConsumerWidget {
               _SettingRow(
                 title: 'How Loki works',
                 detail: 'Offline, private, on this device',
-                icon: PrismGlyph.lock,
+                icon: PrismGlyph.relay,
                 tint: PrismRelay.lilacSoft,
                 ink: PrismRelay.plum,
                 onTap: () => _howLokiWorks(context),
@@ -158,24 +159,13 @@ class _SettingsGroup extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Semantics(
-              header: true,
-              child: Text(
-                title.toUpperCase(),
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: PrismRelay.inkSecondary,
-                      fontSize: 12,
-                      letterSpacing: 1.15,
-                      fontWeight: FontWeight.w800,
-                    ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            for (final row in children) ...[
-              const Divider(height: 1),
+            PrismSectionHeader(title,
+                padding: const EdgeInsets.fromLTRB(0, 0, 0, 8)),
+            // Lines only between rows: the header already opens the group.
+            for (final (index, row) in children.indexed) ...[
+              if (index > 0) const Divider(height: 1, color: PrismRelay.line),
               row,
             ],
-            const Divider(height: 1),
           ],
         ),
       );
@@ -357,6 +347,7 @@ class _InlineSlider extends StatelessWidget {
 Future<void> _showTools(BuildContext context) {
   return showModalBottomSheet<void>(
     context: context,
+    useRootNavigator: true,
     isScrollControlled: true,
     showDragHandle: true,
     builder: (context) => Consumer(

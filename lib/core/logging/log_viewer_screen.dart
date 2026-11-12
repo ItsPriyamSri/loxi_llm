@@ -71,8 +71,12 @@ class _LogViewerScreenState extends State<LogViewerScreen> {
           ),
           if (!_showFile)
             PopupMenuButton<String>(
-              tooltip: 'Filter level',
-              icon: const PrismIcon(PrismGlyph.filter),
+              tooltip: _minLevel == null
+                  ? 'Filter level'
+                  : 'Filter level (${_minLevel!.label}+)',
+              // Accent while a filter hides some entries.
+              icon: PrismIcon(PrismGlyph.filter,
+                  color: _minLevel == null ? null : PrismRelay.accent),
               // String values: a null value never reaches onSelected, so
               // 'all' stands for no filter.
               onSelected: (level) => setState(
@@ -131,13 +135,25 @@ class _LogViewerScreenState extends State<LogViewerScreen> {
   Widget _buildFileView(BuildContext context) {
     if (_readingFile) return const Center(child: CircularProgressIndicator());
     if (_fileContents.startsWith(AppLogger.readFailurePrefix)) {
-      return Center(
-          child: TextButton(
-              onPressed: _loadFile,
-              child: const Text('Could not read saved logs. Try again')));
+      return ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          PrismErrorBanner(
+            message: 'Could not read saved logs.',
+            retryTooltip: 'Read saved logs again',
+            onRetry: _loadFile,
+          ),
+        ],
+      );
     }
     if (_fileContents.isEmpty) {
-      return const Center(child: Text('Saved log file is empty'));
+      return ListView(children: const [
+        PrismEmptyState(
+          glyph: PrismGlyph.log,
+          title: 'Saved log file is empty',
+          message: 'Logs are written here as the app runs.',
+        ),
+      ]);
     }
     return ListView(
       padding: const EdgeInsets.all(20),
@@ -163,14 +179,22 @@ class _LogViewerScreenState extends State<LogViewerScreen> {
         final entries =
             AppLogger.instance.entries.where(_passesFilter).toList();
         if (entries.isEmpty) {
-          return Center(
-            child: AppLogger.instance.entries.isEmpty
-                ? const Text('No logs yet')
-                : TextButton(
-                    onPressed: () => setState(() => _minLevel = null),
-                    child: const Text('No matching logs. Show all'),
+          return ListView(children: [
+            AppLogger.instance.entries.isEmpty
+                ? const PrismEmptyState(
+                    glyph: PrismGlyph.log,
+                    title: 'No logs yet',
+                    message: 'App and inference activity shows up here.',
+                  )
+                : PrismEmptyState(
+                    glyph: PrismGlyph.filter,
+                    title: 'No matching logs',
+                    message: 'Nothing at this level or above yet.',
+                    actionLabel: 'Show all',
+                    actionGlyph: PrismGlyph.filter,
+                    onAction: () => setState(() => _minLevel = null),
                   ),
-          );
+          ]);
         }
         return ListView.builder(
           reverse: true,

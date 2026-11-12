@@ -41,12 +41,16 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
   }
 
   Future<void> _delete(Document document) async {
-    setState(() => _deleting = true);
+    setState(() {
+      _deleting = true;
+      _actionError = null;
+    });
     try {
       final confirmed = await confirmDestructive(
         context,
         title: 'Remove document?',
-        message: document.name,
+        message: '"${document.name}" will be removed from this phone. '
+            'Chats can no longer search it.',
         confirmLabel: 'Remove',
       );
       if (confirmed && mounted) {
@@ -113,10 +117,11 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
             PrismErrorBanner(
               message: message,
               retryTooltip: 'Reload document library',
-              onRetry: () {
-                setState(() => _actionError = null);
-                ref.invalidate(documentsNotifierProvider);
-              },
+              // Reloading only helps when the library itself failed. A
+              // picker or remove failure clears on the next action.
+              onRetry: _actionError != null
+                  ? null
+                  : () => ref.invalidate(documentsNotifierProvider),
             )
           else if (state.isLoading && !importing && _lastDocuments.isEmpty)
             const Padding(
@@ -124,7 +129,12 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
               child: Center(child: CircularProgressIndicator()),
             )
           else if (!state.isLoading && _lastDocuments.isEmpty)
-            const _EmptyLibrary(),
+            const PrismEmptyState(
+              glyph: PrismGlyph.file,
+              title: 'Nothing imported yet',
+              message:
+                  'Your PDFs and notes will show up here with their chunk counts.',
+            ),
           if (_lastDocuments.isNotEmpty) ...[
             const PrismSectionHeader(
               'Imported documents',
@@ -193,7 +203,7 @@ class _DocumentRow extends StatelessWidget {
                     children: [
                       Text(
                         document.name,
-                        maxLines: 1,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.titleSmall,
                       ),
@@ -214,7 +224,7 @@ class _DocumentRow extends StatelessWidget {
                   tooltip: 'Remove document',
                   onPressed: canDelete ? () => onDelete(document) : null,
                   icon: const PrismIcon(PrismGlyph.trash,
-                      size: 19, color: PrismRelay.inkMuted),
+                      size: 19, color: PrismRelay.inkSecondary),
                 ),
               ],
             ),
@@ -226,41 +236,6 @@ class _DocumentRow extends StatelessWidget {
             color: PrismRelay.line,
           ),
       ],
-    );
-  }
-}
-
-class _EmptyLibrary extends StatelessWidget {
-  const _EmptyLibrary();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 26),
-      child: Column(
-        children: [
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: PrismRelay.mintSurface,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: const SizedBox.square(
-              dimension: 52,
-              child: PrismIcon(PrismGlyph.file,
-                  size: 24, color: PrismRelay.greenInk),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text('Nothing imported yet',
-              style: Theme.of(context).textTheme.titleSmall),
-          const SizedBox(height: 4),
-          Text(
-            'Your PDFs and notes will show up here with their chunk counts.',
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-        ],
-      ),
     );
   }
 }

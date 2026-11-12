@@ -99,16 +99,24 @@ bool shouldReconcileStaleModels() {
   return true;
 }
 
-/// Which of [models] have a `loaded`/`loading` status that can't be trusted
-/// after an app restart (no backend survives one) and should be reset to
-/// `downloaded`. Pure — returns the subset needing the fix, already
-/// `copyWith(status: downloaded)`; the caller persists them.
+/// Which of [models] have a status that can't be trusted after an app
+/// restart, already fixed; the caller persists them. Pure.
+///
+/// - `loaded`/`loading` with a file: no backend survives a restart, so
+///   back to `downloaded`.
+/// - `downloading`/`error` with no file: the transfer died with the app, or
+///   failed last session. Back to `available`; a new download resumes from
+///   any partial file on disk.
 List<Model> staleModelsToReconcile(List<Model> models) {
   return [
     for (final m in models)
       if ((m.status == ModelStatus.loaded || m.status == ModelStatus.loading) &&
           m.localPath != null)
-        m.copyWith(status: ModelStatus.downloaded),
+        m.copyWith(status: ModelStatus.downloaded)
+      else if ((m.status == ModelStatus.downloading ||
+              m.status == ModelStatus.error) &&
+          m.localPath == null)
+        m.copyWith(status: ModelStatus.available, downloadProgress: 0.0),
   ];
 }
 
@@ -148,8 +156,8 @@ class ModelsNotifier extends _$ModelsNotifier {
       }
       models = repo.getAll();
     }
-    // Reconcile stale in-memory state: no backend survives an app restart,
-    // so any row persisted as loaded/loading must drop back to downloaded.
+    // Reconcile stale state: no backend or transfer survives an app restart
+    // (see staleModelsToReconcile).
     // Runs exactly once per app session (see shouldReconcileStaleModels) —
     // this is a cold-start recovery step, not something to redo on every
     // live rebuild (every loadModel()/downloadModel() call invalidates this

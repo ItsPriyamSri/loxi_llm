@@ -43,7 +43,7 @@ class PromptLibraryScreen extends ConsumerWidget {
               ),
             ])
           : ListView(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 20),
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
               children: [
                 const PrismSectionHeader(
                   'Library',
@@ -51,6 +51,7 @@ class PromptLibraryScreen extends ConsumerWidget {
                 ),
                 for (var index = 0; index < prompts.length; index++)
                   _PromptRow(
+                    index: index,
                     prompt: prompts[index],
                     showDivider: index != prompts.length - 1,
                     onEdit: () => _editPrompt(
@@ -62,7 +63,9 @@ class PromptLibraryScreen extends ConsumerWidget {
                       final confirmed = await confirmDestructive(
                         context,
                         title: 'Delete prompt?',
-                        message: prompts[index].name,
+                        message: '"${prompts[index].name}" will be removed '
+                            'from the library. Chats that already use it '
+                            'keep their copy.',
                         confirmLabel: 'Delete',
                       );
                       if (confirmed && context.mounted) {
@@ -159,10 +162,7 @@ class _PromptEditorState extends State<_PromptEditor> {
         children: [
           TextField(
             controller: _name,
-            decoration: const InputDecoration(
-              labelText: 'Name',
-              border: OutlineInputBorder(),
-            ),
+            decoration: const InputDecoration(labelText: 'Name'),
           ),
           const SizedBox(height: 12),
           TextField(
@@ -170,7 +170,7 @@ class _PromptEditorState extends State<_PromptEditor> {
             maxLines: 5,
             decoration: const InputDecoration(
               labelText: 'System prompt',
-              border: OutlineInputBorder(),
+              alignLabelWithHint: true,
             ),
           ),
           if (_error.isNotEmpty) ...[
@@ -223,10 +223,7 @@ class _PromptNameDialogState extends State<_PromptNameDialog> {
           TextField(
             controller: _name,
             autofocus: true,
-            decoration: const InputDecoration(
-              labelText: 'Name',
-              border: OutlineInputBorder(),
-            ),
+            decoration: const InputDecoration(labelText: 'Name'),
           ),
           if (_error.isNotEmpty) ...[
             const SizedBox(height: 8),
@@ -264,12 +261,14 @@ class _PromptNameDialogState extends State<_PromptNameDialog> {
 
 class _PromptRow extends StatelessWidget {
   const _PromptRow({
+    required this.index,
     required this.prompt,
     required this.onEdit,
     required this.onDelete,
     this.showDivider = true,
   });
 
+  final int index;
   final SavedPrompt prompt;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
@@ -278,6 +277,7 @@ class _PromptRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final (tileBg, tileInk) = PrismRelay.identityTile(index);
     return Column(
       children: [
         InkWell(
@@ -289,13 +289,13 @@ class _PromptRow extends StatelessWidget {
               children: [
                 DecoratedBox(
                   decoration: BoxDecoration(
-                    color: PrismRelay.lilacSoft,
+                    color: tileBg,
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const SizedBox.square(
+                  child: SizedBox.square(
                     dimension: 40,
                     child: PrismIcon(PrismGlyph.book,
-                        size: 20, color: PrismRelay.plum),
+                        size: 20, color: tileInk),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -320,10 +320,10 @@ class _PromptRow extends StatelessWidget {
                   ),
                 ),
                 IconButton(
-                  tooltip: 'Delete',
+                  tooltip: 'Delete prompt',
                   onPressed: onDelete,
                   icon: const PrismIcon(PrismGlyph.trash,
-                      size: 19, color: PrismRelay.inkMuted),
+                      size: 19, color: PrismRelay.inkSecondary),
                 ),
               ],
             ),
@@ -332,7 +332,6 @@ class _PromptRow extends StatelessWidget {
         if (showDivider)
           const Divider(
             height: 1,
-            indent: 58,
             color: PrismRelay.line,
           ),
       ],

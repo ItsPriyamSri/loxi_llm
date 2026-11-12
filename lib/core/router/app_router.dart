@@ -37,8 +37,10 @@ CustomTransitionPage<void> _pushPage(
         curve: Curves.easeOutCubic,
         reverseCurve: Curves.easeInCubic,
       );
+      // A short fade: the page is opaque for most of the move, so two
+      // pages are never visible through each other for long.
       return FadeTransition(
-        opacity: CurvedAnimation(parent: curved, curve: const Interval(0, .75)),
+        opacity: CurvedAnimation(parent: curved, curve: const Interval(0, .5)),
         child: SlideTransition(
           position: Tween(begin: begin, end: Offset.zero).animate(curved),
           child: child,

@@ -3,33 +3,50 @@ import 'package:flutter/material.dart';
 import '../theme/prism_relay.dart';
 import 'prism_icon.dart';
 
-/// Small uppercase label that opens a group of rows.
+/// Small uppercase label that opens a group of rows, with a full-width line
+/// under it. Rows below draw lines only between themselves, never above a
+/// header, so each group reads: label, line, rows. The header's line is
+/// [PrismRelay.lineStrong], a step darker than the [PrismRelay.line] between
+/// rows, so the eye lands on the group before its rows.
 class PrismSectionHeader extends StatelessWidget {
   const PrismSectionHeader(
     this.label, {
     super.key,
     this.padding = const EdgeInsets.fromLTRB(6, 18, 6, 6),
+    this.divider = true,
   });
 
   final String label;
   final EdgeInsetsGeometry padding;
 
+  /// False when the caller draws the line itself, e.g. under a header that
+  /// shares its row with a button.
+  final bool divider;
+
   @override
   Widget build(BuildContext context) {
-    return Padding(
+    final text = Padding(
       padding: padding,
       child: Semantics(
         header: true,
         child: Text(
           label.toUpperCase(),
           style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: PrismRelay.inkMuted,
-                fontSize: 11,
-                letterSpacing: 1.4,
-                fontWeight: FontWeight.w700,
+                color: PrismRelay.inkSecondary,
+                fontSize: 12,
+                letterSpacing: 1.15,
+                fontWeight: FontWeight.w800,
               ),
         ),
       ),
+    );
+    if (!divider) return text;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        text,
+        const Divider(height: 1, color: PrismRelay.lineStrong),
+      ],
     );
   }
 }
@@ -99,6 +116,7 @@ class PrismEmptyState extends StatelessWidget {
     required this.title,
     required this.message,
     this.actionLabel,
+    this.actionGlyph = PrismGlyph.plus,
     this.onAction,
   });
 
@@ -106,6 +124,7 @@ class PrismEmptyState extends StatelessWidget {
   final String title;
   final String message;
   final String? actionLabel;
+  final PrismGlyph actionGlyph;
   final VoidCallback? onAction;
 
   @override
@@ -137,7 +156,7 @@ class PrismEmptyState extends StatelessWidget {
             const SizedBox(height: 18),
             FilledButton.icon(
               onPressed: onAction,
-              icon: const PrismIcon(PrismGlyph.plus, size: 18),
+              icon: PrismIcon(actionGlyph, size: 18),
               label: Text(actionLabel!),
             ),
           ],
@@ -148,6 +167,9 @@ class PrismEmptyState extends StatelessWidget {
 }
 
 /// Asks before a destructive action. True only when the user confirms.
+///
+/// [message] says what is lost; the confirm button is red so it never
+/// reads as the safe choice.
 Future<bool> confirmDestructive(
   BuildContext context, {
   required String title,
@@ -165,6 +187,7 @@ Future<bool> confirmDestructive(
           child: const Text('Cancel'),
         ),
         TextButton(
+          style: TextButton.styleFrom(foregroundColor: PrismRelay.errorInk),
           onPressed: () => Navigator.pop(context, true),
           child: Text(confirmLabel),
         ),
@@ -172,6 +195,64 @@ Future<bool> confirmDestructive(
     ),
   );
   return confirmed ?? false;
+}
+
+/// A one-line page notice with an optional text action, such as "No model
+/// loaded · Models". Peach for a state to act on, blush for a failure.
+class PrismNotice extends StatelessWidget {
+  const PrismNotice({
+    super.key,
+    required this.message,
+    this.failed = false,
+    this.actionLabel,
+    this.onAction,
+  });
+
+  final String message;
+  final bool failed;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final (fill, border, ink) = failed
+        ? (PrismRelay.blush, PrismRelay.blushBorder, PrismRelay.errorInk)
+        : (PrismRelay.peachSurface, PrismRelay.peach, PrismRelay.amberInk);
+    return Semantics(
+      liveRegion: true,
+      child: Container(
+        decoration: BoxDecoration(
+          color: fill,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: border),
+        ),
+        padding: EdgeInsets.fromLTRB(12, 4, actionLabel == null ? 12 : 4, 4),
+        constraints: const BoxConstraints(minHeight: 52),
+        child: Row(
+          children: [
+            PrismIcon(failed ? PrismGlyph.warn : PrismGlyph.models,
+                size: 20, color: ink),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                message,
+                style: Theme.of(context)
+                    .textTheme
+                    .titleSmall
+                    ?.copyWith(color: PrismRelay.ink),
+              ),
+            ),
+            if (actionLabel != null)
+              TextButton(
+                style: TextButton.styleFrom(foregroundColor: ink),
+                onPressed: onAction,
+                child: Text(actionLabel!),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 /// Static backdrop behind the chat list and conversation: a lilac wash

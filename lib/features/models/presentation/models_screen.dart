@@ -1,8 +1,5 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/providers/download_provider.dart';
@@ -226,9 +223,9 @@ class _ModelsScreenState extends ConsumerState<ModelsScreen> {
                 size: 22, color: PrismRelay.plum),
             style: IconButton.styleFrom(
               backgroundColor: PrismRelay.lilacSoft,
-              minimumSize: const Size.square(44),
+              minimumSize: const Size.square(48),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(13),
               ),
             ),
           ),
@@ -276,13 +273,13 @@ class _ModelsScreenState extends ConsumerState<ModelsScreen> {
                     : null,
                 onAction: heroAction,
               ),
-            const SizedBox(height: 22),
+            const SizedBox(height: 12),
             Wrap(
               alignment: WrapAlignment.spaceBetween,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                Text('Model library',
-                    style: Theme.of(context).textTheme.titleMedium),
+                const PrismSectionHeader('Model library',
+                    padding: EdgeInsets.fromLTRB(6, 6, 6, 0), divider: false),
                 TextButton.icon(
                   onPressed: loading || _choosingFile ? null : _sideload,
                   icon: const PrismIcon(PrismGlyph.plus, size: 19),
@@ -314,7 +311,14 @@ class _ModelsScreenState extends ConsumerState<ModelsScreen> {
             else
               Column(
                 children: [
-                  const Divider(height: 1),
+                  // The header's line, hidden like the others when the
+                  // first row is selected.
+                  Divider(
+                    height: 1,
+                    color: models.first.id == selected?.id
+                        ? PrismRelay.lineStrong.withValues(alpha: 0)
+                        : PrismRelay.lineStrong,
+                  ),
                   for (final (index, row) in models.map(presentation).indexed) ...[
                     _ModelRow(
                       key: ValueKey('model-${row.model.id}'),
@@ -330,7 +334,15 @@ class _ModelsScreenState extends ConsumerState<ModelsScreen> {
                       onAction: actionFor(row),
                     ),
                     if (index != models.length - 1)
-                      const Divider(height: 1),
+                      // No line touching the selected row: it would poke
+                      // out past the rounded border's corners.
+                      Divider(
+                        height: 1,
+                        color: row.model.id == selected?.id ||
+                                models[index + 1].id == selected?.id
+                            ? PrismRelay.line.withValues(alpha: 0)
+                            : PrismRelay.line,
+                      ),
                   ],
                 ],
               ),
@@ -339,67 +351,6 @@ class _ModelsScreenState extends ConsumerState<ModelsScreen> {
         if (loadingModel != null)
           Positioned.fill(child: _LoadingOverlay(modelName: loadingModel.name)),
       ]),
-    );
-  }
-}
-
-/// The layered processor art, gently bobbing. flutter_svg draws SVG
-/// statically (no CSS animation, no filters), so all motion lives here.
-/// Reduced motion holds it still.
-class _LoadingArt extends StatefulWidget {
-  const _LoadingArt({required this.width});
-
-  final double width;
-
-  @override
-  State<_LoadingArt> createState() => _LoadingArtState();
-}
-
-class _LoadingArtState extends State<_LoadingArt>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _clock = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 3800),
-  );
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (MediaQuery.disableAnimationsOf(context)) {
-      _clock.stop();
-      _clock.value = .5;
-    } else if (!_clock.isAnimating) {
-      _clock.repeat();
-    }
-  }
-
-  @override
-  void dispose() {
-    _clock.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final svg = SvgPicture.asset(
-      'assets/art/layered_processor.svg',
-      width: widget.width,
-    );
-    if (MediaQuery.disableAnimationsOf(context)) return svg;
-    return AnimatedBuilder(
-      animation: _clock,
-      builder: (context, child) {
-        final t = _clock.value * 2 * math.pi;
-        final wave = math.sin(t);
-        return Transform.translate(
-          offset: Offset(0, -6 * (0.5 - 0.5 * math.cos(t))),
-          child: Transform.scale(
-            scale: 1 + .022 * wave.abs(),
-            child: child,
-          ),
-        );
-      },
-      child: svg,
     );
   }
 }
@@ -415,13 +366,13 @@ class _LoadingOverlay extends StatelessWidget {
         liveRegion: true,
         label: 'Loading $modelName into memory',
         child: Container(
-          color: PrismRelay.canvas.withValues(alpha: .97),
+          color: PrismRelay.canvas,
           child: Center(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(24),
               child: Column(mainAxisSize: MainAxisSize.min, children: [
-                const ExcludeSemantics(
-                  child: _LoadingArt(width: 264),
+                ExcludeSemantics(
+                  child: Image.asset(kChipArt, width: 220, height: 220),
                 ),
                 const SizedBox(height: 10),
                 Text('Loading $modelName…',
@@ -440,16 +391,18 @@ class _LoadingOverlay extends StatelessWidget {
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: PrismRelay.inkMuted),
                 ),
-                const SizedBox(height: 18),
-                const SizedBox(
-                  width: 160,
-                  child: LinearProgressIndicator(
-                    minHeight: 5,
-                    borderRadius: BorderRadius.all(Radius.circular(6)),
-                    color: PrismRelay.accent,
-                    backgroundColor: PrismRelay.lilacSoft,
+                // Loading reports no progress, so the bar can only sweep;
+                // reduced motion drops it and the copy carries the state.
+                if (!MediaQuery.disableAnimationsOf(context)) ...[
+                  const SizedBox(height: 18),
+                  const SizedBox(
+                    width: 160,
+                    child: LinearProgressIndicator(
+                      minHeight: 5,
+                      borderRadius: BorderRadius.all(Radius.circular(6)),
+                    ),
                   ),
-                ),
+                ],
               ]),
             ),
           ),
@@ -566,9 +519,9 @@ class _ModelRow extends StatelessWidget {
     final theme = Theme.of(context);
     final model = item.model;
     final (tileBg, tileInk) = PrismRelay.identityTile(index);
-    // Live transfer is the only state line the tile keeps; everything else
-    // (saved/errored/stopped) is hero-exclusive so the two never disagree.
-    // It wins over the badge so a download is visible on every row.
+    // The hero and the row's action button carry the state. The only state
+    // line a row keeps is a live transfer, over the badge, so a download
+    // stays visible on every row.
     final showDownloading =
         item.status == ModelStatus.downloading && item.live;
     final badge = item.model.recommendationBadge;
@@ -627,7 +580,7 @@ class _ModelRow extends StatelessWidget {
                     children: [
                       Text(
                         model.name,
-                        maxLines: 1,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.titleSmall,
                       ),
@@ -676,9 +629,12 @@ class _ModelRow extends StatelessWidget {
                     size: 20,
                   ),
                   style: IconButton.styleFrom(
-                    backgroundColor: PrismRelay.lilacSoft,
+                    // White on the selected row, so the button stays a tile
+                    // on the row's own lilac.
+                    backgroundColor:
+                        selected ? PrismRelay.surface : PrismRelay.lilacSoft,
                     foregroundColor: PrismRelay.plum,
-                    minimumSize: const Size.square(44),
+                    minimumSize: const Size.square(48),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(13),
                     ),

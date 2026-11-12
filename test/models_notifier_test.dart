@@ -62,11 +62,22 @@ void main() {
       expect(stale, isEmpty);
     });
 
-    test('leaves available/downloading/downloaded/error models alone', () {
+    test('resets a cut-off or failed download with no file to available', () {
+      final stale = staleModelsToReconcile([
+        _model('a', ModelStatus.downloading, localPath: null)
+            .copyWith(downloadProgress: .4),
+        _model('b', ModelStatus.error, localPath: null),
+      ]);
+      expect(stale.map((m) => m.status),
+          [ModelStatus.available, ModelStatus.available]);
+      expect(stale.first.downloadProgress, 0);
+    });
+
+    test('leaves available/downloaded models and a failed load alone', () {
       final stale = staleModelsToReconcile([
         _model('a', ModelStatus.available),
-        _model('b', ModelStatus.downloading),
         _model('c', ModelStatus.downloaded),
+        // A file on disk: the load failed, not the download.
         _model('d', ModelStatus.error),
       ]);
       expect(stale, isEmpty);

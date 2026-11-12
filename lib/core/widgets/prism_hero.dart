@@ -241,17 +241,15 @@ class PrismHero extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(16, 14, 8, 12),
               child: LayoutBuilder(
                 builder: (context, constraints) {
-                  final bigText = MediaQuery.textScalerOf(context).scale(16) > 23;
+                  // From about 1.2x text the hero stacks so the CTA keeps
+                  // the full width instead of truncating beside the art.
+                  final bigText = MediaQuery.textScalerOf(context).scale(16) > 19;
                   if (bigText) {
-                    // At large text the hero stacks: art floats top-right,
-                    // the CTA keeps the full width instead of being squeezed.
+                    // Art sits top-start, clear of the corner pill.
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Align(
-                          alignment: AlignmentDirectional.centerEnd,
-                          child: artFor(88),
-                        ),
+                        artFor(88),
                         content,
                       ],
                     );

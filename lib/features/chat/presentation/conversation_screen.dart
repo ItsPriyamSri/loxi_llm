@@ -18,6 +18,7 @@ import '../../../core/theme/prism_relay.dart';
 import '../../../core/widgets/prism_blocks.dart';
 import '../../../core/widgets/prism_icon.dart';
 import '../../agent/agent_model_support.dart';
+import '../../documents/presentation/documents_notifier.dart';
 import '../../models/domain/model.dart';
 import '../../settings/presentation/prompt_library_screen.dart';
 import '../../settings/presentation/settings_notifier.dart';
@@ -278,6 +279,8 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
   }) async {
     await showModalBottomSheet<void>(
       context: context,
+      // Above the dock: the sheet and its scrim cover the whole screen.
+      useRootNavigator: true,
       isScrollControlled: true,
       showDragHandle: true,
       builder: (sheetContext) => _AttachSheet(
@@ -321,7 +324,6 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                       maxLines: 6,
                       decoration: const InputDecoration(
                         hintText: 'Enter a system prompt',
-                        border: OutlineInputBorder(),
                       ),
                     ),
                     if (prompts.isNotEmpty) ...[
@@ -728,33 +730,32 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                 if (!ready)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
-                    child: Card(
-                      color: backendAsync.hasError
-                          ? PrismRelay.blush
-                          : PrismRelay.peachSurface,
-                      child: ListTile(
-                        title: Text(backendAsync.isLoading
-                            ? 'Loading model…'
-                            : backendAsync.hasError
-                                ? 'Could not load model'
-                                : 'No model loaded'),
-                        trailing: canNavigate && !backendAsync.isLoading
-                            ? TextButton(
-                                onPressed: () => context.go('/models'),
-                                child: const Text('Models'))
-                            : null,
-                      ),
+                    child: PrismNotice(
+                      message: backendAsync.isLoading
+                          ? 'Loading model…'
+                          : backendAsync.hasError
+                              ? 'Could not load model'
+                              : 'No model loaded',
+                      failed: backendAsync.hasError,
+                      actionLabel: canNavigate && !backendAsync.isLoading
+                          ? 'Models'
+                          : null,
+                      onAction: () => context.go('/models'),
                     ),
                   ),
                 Expanded(
                   child: chatAsync.when(
                     loading: () =>
                         const Center(child: CircularProgressIndicator()),
-                    error: (e, _) => Center(
-                      child: TextButton(
-                        onPressed: () => ref.invalidate(chatProvider),
-                        child: const Text('Could not open messages. Try again'),
-                      ),
+                    error: (e, _) => ListView(
+                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                      children: [
+                        PrismErrorBanner(
+                          message: 'Could not open messages.',
+                          retryTooltip: 'Reload messages',
+                          onRetry: () => ref.invalidate(chatProvider),
+                        ),
+                      ],
                     ),
                     data: (_) {
                       if (blank) {
@@ -881,7 +882,11 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                               timeLabel: stats?.time,
                               child: !hasText &&
                                       message.role == MessageRole.assistant
-                                  ? const Text('No reply generated')
+                                  ? const Text(
+                                      'No reply generated. Try sending again.',
+                                      style: TextStyle(
+                                          color: PrismRelay.inkSecondary),
+                                    )
                                   : null,
                             );
                           },
@@ -923,7 +928,9 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                     conversation.systemPrompt.isEmpty &&
                     prompts.isNotEmpty &&
                     !isStreaming &&
-                    MediaQuery.viewInsetsOf(context).bottom == 0)
+                    // The shell and this Scaffold consume the keyboard
+                    // inset, so ask the view whether the keyboard is up.
+                    View.of(context).viewInsets.bottom == 0)
                   _shortcuts(centered: false),
                 SafeArea(
                   top: false,
@@ -932,7 +939,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                     decoration: BoxDecoration(
                       color: PrismRelay.surface,
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: const Color(0xFFCFCBE0), width: 1.4),
+                      border: Border.all(color: PrismRelay.lilacBorder, width: 1.4),
                       boxShadow: PrismRelay.shadowRaised,
                     ),
                     child: Padding(
@@ -1066,7 +1073,7 @@ class _ShortcutChip extends StatelessWidget {
         onTap: onPressed,
         borderRadius: BorderRadius.circular(10),
         child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 36, minWidth: 48),
+          constraints: const BoxConstraints(minHeight: 48, minWidth: 48),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
             child: Row(
@@ -1322,6 +1329,8 @@ class _AttachSheet extends ConsumerWidget {
     final rag = conversation?.ragEnabled ?? false;
     final tools = conversation?.toolsEnabled ?? false;
     final actions = ref.read(conversationListNotifierProvider.notifier);
+    final documentCount =
+        ref.watch(documentsNotifierProvider).valueOrNull?.length;
 
     return SafeArea(
       top: false,
@@ -1352,7 +1361,9 @@ class _AttachSheet extends ConsumerWidget {
               tile: PrismRelay.mintSurface,
               tileInk: PrismRelay.greenInk,
               title: 'Documents',
-              subtitle: 'Answers use your imported documents',
+              subtitle: documentCount == 0
+                  ? 'Import a document in Documents first'
+                  : 'Answers use your imported documents',
               enabled: true,
               switchedOn: rag,
               onTap: () {
@@ -1367,7 +1378,7 @@ class _AttachSheet extends ConsumerWidget {
               title: 'Tools',
               subtitle: agentCapable
                   ? 'Loki may call your allowed tools'
-                  : 'Needs a model that can call tools',
+                  : 'This model cannot call tools. Load a larger one.',
               enabled: agentCapable,
               switchedOn: agentCapable && tools,
               onTap: () {

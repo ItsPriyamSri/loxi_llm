@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:loki_llm/core/providers/objectbox_provider.dart';
 import 'package:loki_llm/core/providers/shared_preferences_provider.dart';
 import 'package:loki_llm/core/router/app_router.dart';
+import 'package:loki_llm/core/theme/prism_relay.dart';
+import 'package:loki_llm/core/widgets/prism_dock.dart';
 import 'package:loki_llm/features/models/domain/model.dart';
 import 'package:loki_llm/features/models/domain/model_status.dart';
 import 'package:loki_llm/main.dart';
@@ -37,6 +39,26 @@ void main() {
       expect(find.text('Models'), findsAtLeastNWidgets(1));
       expect(find.text('Chat'), findsAtLeastNWidgets(1));
       expect(find.text('Documents'), findsAtLeastNWidgets(1));
+    });
+
+    testWidgets('the dock stops growing past 1.3x text', (tester) async {
+      Future<double> dockHeight(double scale) async {
+        await tester.pumpWidget(MediaQuery(
+          data: MediaQueryData(textScaler: TextScaler.linear(scale)),
+          child: MaterialApp(
+            theme: PrismRelay.light,
+            home: Scaffold(
+              bottomNavigationBar:
+                  PrismDock(selectedIndex: 2, onSelected: (_) {}),
+            ),
+          ),
+        ));
+        return tester.getSize(find.byKey(const ValueKey('prism-dock'))).height;
+      }
+
+      final atClamp = await dockHeight(1.3);
+      expect(await dockHeight(2), atClamp);
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('every pushed route renders at large text without errors',
