@@ -17,10 +17,14 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- Refresh the Android interface with the Prism Relay light theme, animated model controls, an inset navigation dock, and clearer chat, document, settings, and diagnostic screens.
-- Set the UI in Plus Jakarta Sans and redraw every icon with Lucide. The models hero now shows an animated chip that energizes with real download, load and ready events, the conversation composer gains tappable Documents and Tools labels, unsupported controls render in clear grey, screen changes fade and drift, and key actions return haptic feedback. The chat list is grouped by recency with quieter rows, the dock floats without a background bar, and reply actions acknowledge a tap with a check.
-- Fix the design audit pass: flat authored brand mark (no sparkle cliché), the models hero becomes a 2.5D extruded chip that disassembles and reassembles itself on a loop once a model is resident, peach is reserved for bytes moving while mint marks a resident model, plain-language settings labels, designed empty states for the model library and prompts, confirm-before-clear diagnostics, and a "How Loki works" trust page.
-- Rebuild the interface around the Prism Relay concept: a single welcome page with one Get started action and the gradient-behind-the-chip art direction, which now also washes the chat background; same-size 200 dp hero tiles on Models, Documents and Chat, with the model being downloaded or loaded shown there as it transfers; a full-screen animated loading page that notes large and vision models; the new-chat centre is a 2×3 starter-template grid (More opens the prompt library) and Explain/Summarize/Refine/Translate shrink to compact chips above the composer (they centre themselves once a template is chosen); the + button in the composer opens a single sheet for attaching images, Documents and Tools, with unsupported tools and images shown greyed out and unclickable; the system prompt button gains an active dot and sits left of the overflow menu; replies lose the Loki mark and keep icon-only copy and read-aloud actions beside the tok/s and time metrics; the chat list gains a "New chat" action button and pastel rows with recency sections; answer and reply icons are TextButton-free; the settings sliders for chunk size and results per question stay inline.
+- New light interface, Prism Relay. Plus Jakarta Sans, Lucide icons, a floating three-tab dock, soft page transitions that respect reduced motion, and haptic feedback on key actions.
+- One welcome page with a single Get started action.
+- Models, Chat and Documents open with the same 200 dp hero tile. On Models it follows the chosen model through download, load, ready and errors, says why a load failed, and has Start a chat and Unload. A full-screen page shows while a model loads.
+- A new chat opens on your saved prompts as a 2×3 grid, with Explain, Summarize, Refine and Translate as chips above the composer. More opens the System Prompt dialog. The system prompt button sits in the title bar and shows a dot when a prompt is set.
+- The + button in the composer opens one sheet for images, Documents and Tools. Options the loaded model cannot use stay visible but greyed out.
+- Replies show speed and time next to icon-only copy and read-aloud. Copy turns into a check for a moment.
+- The chat list is grouped by Today, Yesterday, This week and older, with a New chat button. Chats start titled "New chat".
+- Settings keeps chunk size, results per question and read-aloud speed as inline sliders, adds a "How Loki works" page, and asks before clearing logs.
 
 ### Fixed
 

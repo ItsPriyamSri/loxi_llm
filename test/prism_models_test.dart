@@ -86,17 +86,52 @@ void main() {
     await tester.tap(heroText('Stop download'));
     expect(models.cancelled, ['second']);
   });
+
+  testWidgets('a failed load keeps its reason in the hero', (tester) async {
+    final models = _Catalog();
+    await tester.pumpWidget(ProviderScope(
+      overrides: [modelsNotifierProvider.overrideWith(() => models)],
+      child: MaterialApp(theme: PrismRelay.light, home: const ModelsScreen()),
+    ));
+    await tester.pumpAndSettle();
+    models.setStatus('gemma3-270m-it', ModelStatus.downloaded,
+        localPath: '/tmp/starter.gguf');
+    await tester.pumpAndSettle();
+
+    final hero = find.byKey(const ValueKey('model-hero'));
+    await tester
+        .tap(find.descendant(of: hero, matching: find.text('Load model')));
+    await tester.pumpAndSettle();
+
+    expect(find.descendant(of: hero, matching: find.text('Could not load model')),
+        findsOneWidget);
+    expect(
+        find.descendant(of: hero, matching: find.text('Not enough memory')),
+        findsOneWidget);
+    expect(find.descendant(of: hero, matching: find.text('Retry load')),
+        findsOneWidget);
+  });
 }
 
 class _Catalog extends ModelsNotifier {
   final requested = <String>[];
   final cancelled = <String>[];
 
-  void setStatus(String id, ModelStatus status) {
+  void setStatus(String id, ModelStatus status, {String? localPath}) {
     state = AsyncData([
       for (final model in state.requireValue)
-        if (model.id == id) model.copyWith(status: status) else model,
+        if (model.id == id)
+          model.copyWith(
+              status: status, localPath: localPath ?? model.localPath)
+        else
+          model,
     ]);
+  }
+
+  @override
+  Future<void> loadModel(String modelId) async {
+    setStatus(modelId, ModelStatus.error);
+    throw StateError('Not enough memory');
   }
 
   void transfer(String id, double progress) {

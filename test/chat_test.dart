@@ -24,6 +24,14 @@ void main() {
     });
   });
 
+  group('isPlaceholderChatTitle', () {
+    test('matches the current and the pre-refresh placeholder', () {
+      expect(isPlaceholderChatTitle(kNewChatTitle), isTrue);
+      expect(isPlaceholderChatTitle('New conversation'), isTrue);
+      expect(isPlaceholderChatTitle('Trip plan'), isFalse);
+    });
+  });
+
   group('firstMessageTitle', () {
     test('falls back to Image for empty (image-only) text', () {
       expect(firstMessageTitle(''), 'Image');

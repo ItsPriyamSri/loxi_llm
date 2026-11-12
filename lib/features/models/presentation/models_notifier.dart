@@ -268,10 +268,9 @@ class ModelsNotifier extends _$ModelsNotifier {
   /// racing the single native backend (InferenceNotifier/LlamaEngine.instance).
   ///
   /// A genuine backend load failure instead propagates as whatever
-  /// [InferenceNotifier.loadModel] threw — callers shouldn't show feedback
-  /// for that themselves, since it's already surfaced via
-  /// `inferenceNotifierProvider`'s `AsyncError` state (see the Models
-  /// screen's `ref.listen`); showing it again here would double up.
+  /// [InferenceNotifier.loadModel] threw, after the model is saved with
+  /// [ModelStatus.error] and `inferenceNotifierProvider` holds the
+  /// user-facing error. The Models screen shows that reason in its hero.
   Future<void> loadModel(String modelId) async {
     final repo = ref.read(modelRepositoryProvider);
     final model = repo.getById(modelId);

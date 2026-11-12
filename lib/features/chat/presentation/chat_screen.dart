@@ -4,7 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/platform/haptics.dart';
 import '../../../core/providers/inference_provider.dart';
 import '../../../core/theme/prism_relay.dart';
-import '../../../core/widgets/prism_art.dart';
+import '../../../core/widgets/prism_blocks.dart';
 import '../../../core/widgets/prism_hero.dart';
 import '../../../core/widgets/prism_icon.dart';
 import '../../models/presentation/models_notifier.dart';
@@ -79,9 +79,7 @@ class ChatScreen extends ConsumerWidget {
         children: [
           PrismHero(
             variant: PrismHeroVariant.violet,
-            artwork: PrismArtwork.relay,
-            artImageAsset: 'assets/art/tech-chip.png',
-            pose: pending ? RelayPose.loading : RelayPose.idle,
+            artImageAsset: kChipArt,
             status: pending ? 'Loading' : failed ? 'Could not load' : 'No model',
             statusGlyph: pending
                 ? PrismGlyph.relay
@@ -151,80 +149,81 @@ class _ConversationListView extends ConsumerWidget {
       ),
       body: Stack(
         children: [
-          const Positioned.fill(child: _AmbientWash()),
+          const Positioned.fill(child: PrismAmbientWash()),
           conversationsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(
-          child: TextButton(
-            onPressed: () => ref.invalidate(conversationListNotifierProvider),
-            child: const Text('Could not load chats. Try again'),
-          ),
-        ),
-        data: (conversations) {
-          if (conversations.isEmpty) {
-            return _EmptyChats(onStart: startNewConversation);
-          }
-          final sorted = [...conversations]
-            ..sort((a, b) => b.updatedAtMs.compareTo(a.updatedAtMs));
-          return ListView.builder(
-            padding: const EdgeInsets.fromLTRB(12, 4, 12, 96),
-            itemCount: sorted.length,
-            itemBuilder: (context, index) {
-              final conv = sorted[index];
-              final storedId = conv.modelId;
-              final modelName =
-                  storedId.isEmpty ? '' : (modelNames[storedId] ?? storedId);
-              final section = _sectionFor(conv.updatedAtMs);
-              final showsHeader =
-                  index == 0 || _sectionFor(sorted[index - 1].updatedAtMs) != section;
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (showsHeader) _SectionHeader(section),
-                  _ConversationRow(
-                    index: index,
-                    title: conv.title,
-                    subtitle: conversationMeta(
-                      modelName: modelName,
-                      updatedAtMs: conv.updatedAtMs,
-                    ),
-                    showDivider: index != sorted.length - 1 &&
-                        _sectionFor(sorted[index + 1].updatedAtMs) == section,
-                    onTap: () {
-                      Haptics.selection();
-                      context.go('/chat/${conv.id}');
-                    },
-                    onDelete: () async {
-                      final confirmed = await showDialog<bool>(
-                        context: context,
-                        builder: (context) => AlertDialog(
-                          title: const Text('Delete conversation?'),
-                          content: Text(conv.title),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(context, false),
-                              child: const Text('Cancel'),
-                            ),
-                            TextButton(
-                              onPressed: () => Navigator.pop(context, true),
-                              child: const Text('Delete'),
-                            ),
-                          ],
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (e, _) => Center(
+              child: TextButton(
+                onPressed: () => ref.invalidate(conversationListNotifierProvider),
+                child: const Text('Could not load chats. Try again'),
+              ),
+            ),
+            data: (conversations) {
+              if (conversations.isEmpty) {
+                return _EmptyChats(onStart: startNewConversation);
+              }
+              final sorted = [...conversations]
+                ..sort((a, b) => b.updatedAtMs.compareTo(a.updatedAtMs));
+              return ListView.builder(
+                padding: const EdgeInsets.fromLTRB(12, 4, 12, 96),
+                itemCount: sorted.length,
+                itemBuilder: (context, index) {
+                  final conv = sorted[index];
+                  final storedId = conv.modelId;
+                  final modelName =
+                      storedId.isEmpty ? '' : (modelNames[storedId] ?? storedId);
+                  final section = _sectionFor(conv.updatedAtMs);
+                  final showsHeader =
+                      index == 0 || _sectionFor(sorted[index - 1].updatedAtMs) != section;
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (showsHeader) PrismSectionHeader(section),
+                      _ConversationRow(
+                        key: ValueKey('chat-${conv.id}'),
+                        index: index,
+                        title: conv.title,
+                        subtitle: conversationMeta(
+                          modelName: modelName,
+                          updatedAtMs: conv.updatedAtMs,
                         ),
-                      );
-                      if (confirmed == true && context.mounted) {
-                        Haptics.tap();
-                        notifier.deleteConversation(conv.id);
-                      }
-                    },
-                  ),
-                ],
+                        showDivider: index != sorted.length - 1 &&
+                            _sectionFor(sorted[index + 1].updatedAtMs) == section,
+                        onTap: () {
+                          Haptics.selection();
+                          context.go('/chat/${conv.id}');
+                        },
+                        onDelete: () async {
+                          final confirmed = await showDialog<bool>(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                              title: const Text('Delete conversation?'),
+                              content: Text(conv.title),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context, false),
+                                  child: const Text('Cancel'),
+                                ),
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context, true),
+                                  child: const Text('Delete'),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (confirmed == true && context.mounted) {
+                            Haptics.tap();
+                            notifier.deleteConversation(conv.id);
+                          }
+                        },
+                      ),
+                    ],
+                  );
+                },
               );
             },
-          );
-        },
-      ),
-      ],
+          ),
+        ],
       ),
       floatingActionButton: isEmpty
           ? null
@@ -341,33 +340,9 @@ class _EmptyChats extends StatelessWidget {
   }
 }
 
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader(this.label);
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(6, 18, 6, 6),
-      child: Semantics(
-        header: true,
-        child: Text(
-          label.toUpperCase(),
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: PrismRelay.inkMuted,
-                fontSize: 11,
-                letterSpacing: 1.4,
-                fontWeight: FontWeight.w700,
-              ),
-        ),
-      ),
-    );
-  }
-}
-
 class _ConversationRow extends StatelessWidget {
   const _ConversationRow({
+    super.key,
     required this.index,
     required this.title,
     required this.subtitle,
@@ -383,16 +358,9 @@ class _ConversationRow extends StatelessWidget {
   final VoidCallback onDelete;
   final bool showDivider;
 
-  static const _tiles = [
-    (PrismRelay.peachSurface, PrismRelay.amberInk),
-    (PrismRelay.skySoft, PrismRelay.skyInk),
-    (PrismRelay.mintSurface, PrismRelay.greenInk),
-    (PrismRelay.lilacSoft, PrismRelay.plum),
-  ];
-
   @override
   Widget build(BuildContext context) {
-    final (tileBg, tileInk) = _tiles[index % _tiles.length];
+    final (tileBg, tileInk) = PrismRelay.identityTile(index);
     return Column(
       children: [
         InkWell(
@@ -469,50 +437,4 @@ class _ConversationRow extends StatelessWidget {
       ],
     );
   }
-}
-
-/// Static ambient backdrop for the chat list: two soft washes.
-/// Painted once; nothing animates.
-class _AmbientWash extends StatelessWidget {
-  const _AmbientWash();
-
-  @override
-  Widget build(BuildContext context) {
-    return const IgnorePointer(
-      child: CustomPaint(
-        painter: _AmbientPainter(),
-        size: Size.infinite,
-      ),
-    );
-  }
-}
-
-class _AmbientPainter extends CustomPainter {
-  const _AmbientPainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final bounds = Offset.zero & size;
-    canvas.drawRect(
-      bounds,
-      Paint()
-        ..shader = const RadialGradient(
-          center: Alignment(-.85, -.75),
-          radius: 1.35,
-          colors: [Color(0x52E9DFFA), Color(0x00E9DFFA)],
-        ).createShader(bounds),
-    );
-    canvas.drawRect(
-      bounds,
-      Paint()
-        ..shader = const RadialGradient(
-          center: Alignment(1.05, .95),
-          radius: 1.3,
-          colors: [Color(0x3DFDEBDD), Color(0x00FDEBDD)],
-        ).createShader(bounds),
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

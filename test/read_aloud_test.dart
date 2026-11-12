@@ -139,6 +139,24 @@ void main() {
   });
 
   group('read aloud on a conversation', () {
+    testWidgets('leaving the chat stops reading', (tester) async {
+      final tts = _FakeTts();
+      final container = await _openChat(tts);
+      await tester.pumpWidget(_app(container));
+      await tester.pump();
+
+      await tester.tap(find.byTooltip('Read aloud').first);
+      await tester.pump();
+      await tester.pumpWidget(UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: SizedBox()),
+      ));
+      expect(tts.calls, ['speak', 'stop']);
+
+      tts.speakGate!.complete();
+      await tester.pump();
+    });
+
     testWidgets('pause then resume', (tester) async {
       final tts = _FakeTts();
       final container = await _openChat(tts);

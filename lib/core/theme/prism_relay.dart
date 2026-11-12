@@ -10,7 +10,6 @@ abstract final class PrismRelay {
   static const line = Color(0xFFEAE8F3);
   static const lineStrong = Color(0xFFDCD9E8);
   static const accent = Color(0xFF5F2BE4);
-  static const brandLight = Color(0xFF8A5CF6);
   static const periwinkle = Color(0xFF8F7CF0);
   static const violetDeep = Color(0xFF4520D1);
   static const plum = Color(0xFF5A4CA8);
@@ -24,6 +23,7 @@ abstract final class PrismRelay {
   static const peachSurface = Color(0xFFFDEADA);
   static const amberInk = Color(0xFFA65E1C);
   static const blush = Color(0xFFFBE4E4);
+  static const blushBorder = Color(0xFFF3C4C4);
   static const errorInk = Color(0xFFC0392B);
   static const heroViolet = [
     Color(0xFF4E1CD3),
@@ -32,6 +32,23 @@ abstract final class PrismRelay {
   ];
   static const skySoft = Color(0xFFE2ECFA);
   static const skyInk = Color(0xFF415F93);
+  static const userBubble = Color(0xFFDFD7F2);
+  static const userBubbleBorder = Color(0xFFCFBEEB);
+  static const replyBubbleBorder = Color(0xFFDDE5F1);
+  static const pillGray = Color(0xFFECEAF0);
+  static const pillGrayInk = Color(0xFF716E7D);
+
+  /// Icon tile (background, ink) pairs used down every list, in a fixed
+  /// orange → blue → green → purple rotation. Pick with [identityTile].
+  static const identityTiles = [
+    (peachSurface, amberInk),
+    (skySoft, skyInk),
+    (mintSurface, greenInk),
+    (lilacSoft, plum),
+  ];
+
+  static (Color, Color) identityTile(int index) =>
+      identityTiles[index % identityTiles.length];
 
   static const welcomeFace = LinearGradient(
     begin: Alignment(-.42, -1),
@@ -55,7 +72,6 @@ abstract final class PrismRelay {
     colors: [Color(0xFF7C4BF6), Color(0xFF5524D6)],
   );
 
-  static const rowGap = 8.0;
   static const heroHeight = 200.0;
   static const artStage = 176.0;
   static const motion = Duration(milliseconds: 160);

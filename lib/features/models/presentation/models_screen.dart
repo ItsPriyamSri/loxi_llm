@@ -9,11 +9,12 @@ import '../../../core/providers/download_provider.dart';
 import '../../../core/providers/inference_provider.dart';
 import '../../../core/services/ram_check_service.dart';
 import '../../../core/theme/prism_relay.dart';
-import '../../../core/widgets/prism_art.dart';
+import '../../../core/widgets/prism_blocks.dart';
 import '../../../core/widgets/prism_hero.dart';
 import '../../../core/widgets/prism_icon.dart';
 import '../../../core/platform/haptics.dart';
 import '../../chat/presentation/conversation_list_notifier.dart';
+import '../data/model_catalog.dart';
 import '../domain/model.dart';
 import '../domain/model_status.dart';
 import 'models_notifier.dart';
@@ -31,6 +32,10 @@ class _ModelsScreenState extends ConsumerState<ModelsScreen> {
   bool _confirmingLoad = false;
   bool _unloading = false;
   bool _startingChat = false;
+
+  /// Why the last load in this session failed, shown in the hero while
+  /// that model still reads "Could not load model".
+  ({String modelId, String reason})? _loadFailure;
   final _downloadRequests = <String>{};
   final _stoppedDownloads = <String>{};
 
@@ -65,13 +70,25 @@ class _ModelsScreenState extends ConsumerState<ModelsScreen> {
           !mounted) {
         return;
       }
-      setState(() => _focusedId = model.id);
+      setState(() {
+        _focusedId = model.id;
+        _loadFailure = null;
+      });
       Haptics.commit();
       await ref.read(modelsNotifierProvider.notifier).loadModel(model.id);
     } on ModelAlreadyLoadingException catch (error) {
       if (mounted) _notice(error.toString());
-    } catch (_) {
-      // The inference provider reports the failure on the selected model.
+    } catch (error) {
+      // The model row flips to "Could not load model"; keep the reason so
+      // the hero can say why. The inference provider has already logged it
+      // and may hold a friendlier message (the memory hint for big models).
+      if (mounted) {
+        final shown = ref.read(inferenceNotifierProvider).error ?? error;
+        setState(() => _loadFailure = (
+              modelId: model.id,
+              reason: shown is StateError ? shown.message : '$shown',
+            ));
+      }
     } finally {
       if (mounted) setState(() => _confirmingLoad = false);
     }
@@ -84,6 +101,7 @@ class _ModelsScreenState extends ConsumerState<ModelsScreen> {
     }
     setState(() {
       _focusedId = model.id;
+      if (_loadFailure?.modelId == model.id) _loadFailure = null;
       _downloadRequests.add(model.id);
       _stoppedDownloads.remove(model.id);
     });
@@ -154,7 +172,7 @@ class _ModelsScreenState extends ConsumerState<ModelsScreen> {
         models.where((m) => m.id == _focusedId).firstOrNull ??
         models.where((m) => service.isDownloading(m.id)).firstOrNull ??
         models.where((m) => m.id == ready?.id).firstOrNull ??
-        models.where((m) => m.id == 'gemma3-270m-it').firstOrNull ??
+        models.where((m) => m.id == kStarterModelId).firstOrNull ??
         models.firstOrNull;
 
     _ModelPresentation presentation(Model model) {
@@ -198,6 +216,16 @@ class _ModelsScreenState extends ConsumerState<ModelsScreen> {
 
     final item = selected == null ? null : presentation(selected);
     final heroLoaded = item?.status == ModelStatus.loaded;
+    final heroAction = item == null
+        ? null
+        : heroLoaded
+            ? (loading || _unloading ? null : () => _startChat(item.model))
+            : actionFor(item);
+    final failure = item != null &&
+            item.status == ModelStatus.error &&
+            _loadFailure?.modelId == item.model.id
+        ? _loadFailure!.reason
+        : null;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Models'),
@@ -226,43 +254,35 @@ class _ModelsScreenState extends ConsumerState<ModelsScreen> {
               PrismHero(
                 key: const ValueKey('model-hero'),
                 variant: PrismHeroVariant.violet,
-                pose: item.pose,
-                artImageAsset: 'assets/art/tech-chip.png',
+                artImageAsset: kChipArt,
                 status: _focusedId == null &&
-                        item.model.id == 'gemma3-270m-it' &&
+                        item.model.id == kStarterModelId &&
                         item.status == ModelStatus.available
                     ? 'Suggested starter'
                     : item.label,
                 statusGlyph: item.statusGlyph,
                 announceStatus: !item.live,
                 title: item.model.name,
-                detail: Text(heroLoaded
-                    ? 'You can now chat offline.'
-                    : item.metadata),
+                detail: Text(
+                  heroLoaded
+                      ? 'You can now chat offline.'
+                      : failure ?? item.metadata,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                ),
                 progress: item.live || item.status == ModelStatus.loading
-                    ? _HeroProgress(
+                    ? _TransferProgress(
                         key: ValueKey(item.model.id), value: item.fraction)
                     : null,
-                actionLabel: item.status == ModelStatus.loading
-                    ? 'Loading model'
-                    : item.status == ModelStatus.loaded
-                        ? 'Start a chat'
-                        : item.actionLabel,
-                actionGlyph: item.status == ModelStatus.loading
-                    ? PrismGlyph.relay
-                    : item.status == ModelStatus.loaded
-                        ? PrismGlyph.send
-                        : item.actionIcon,
+                actionLabel: item.actionLabel,
+                actionGlyph: item.actionIcon,
                 cornerActionLabel: heroLoaded ? 'Unload' : null,
-                onCornerAction: heroLoaded ? () => _unload(item.model) : null,
-                actionEnabled: item.status == ModelStatus.loading
-                    ? false
-                    : item.status == ModelStatus.loaded
-                        ? !loading && !_unloading
-                        : actionFor(item) != null,
-                onAction: item.status == ModelStatus.loaded
-                    ? () => _startChat(item.model)
-                    : actionFor(item),
+                cornerActionGlyph: PrismGlyph.unload,
+                onCornerAction: heroLoaded && !_unloading
+                    ? () => _unload(item.model)
+                    : null,
+                actionEnabled: heroAction != null,
+                onAction: heroAction,
               ),
             const SizedBox(height: 22),
             Wrap(
@@ -286,31 +306,10 @@ class _ModelsScreenState extends ConsumerState<ModelsScreen> {
                 _SkeletonRow(),
               ]
             else if (catalog.hasError)
-              Container(
-                decoration: BoxDecoration(
-                  color: PrismRelay.blush,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFFF3C4C4)),
-                ),
-                padding: const EdgeInsets.fromLTRB(12, 6, 4, 6),
-                child: Row(
-                  children: [
-                    const PrismIcon(PrismGlyph.warn,
-                        size: 20, color: PrismRelay.errorInk),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text('Could not load the model library',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: PrismRelay.errorInk, fontSize: 13)),
-                    ),
-                    IconButton(
-                      tooltip: 'Reload model library',
-                      icon: const PrismIcon(PrismGlyph.refresh,
-                          size: 20, color: PrismRelay.errorInk),
-                      onPressed: () => ref.invalidate(modelsNotifierProvider),
-                    ),
-                  ],
-                ),
+              PrismErrorBanner(
+                message: 'Could not load the model library',
+                retryTooltip: 'Reload model library',
+                onRetry: () => ref.invalidate(modelsNotifierProvider),
               )
             else if (models.isEmpty)
               Padding(
@@ -333,7 +332,7 @@ class _ModelsScreenState extends ConsumerState<ModelsScreen> {
                         style: Theme.of(context).textTheme.titleMedium),
                     const SizedBox(height: 4),
                     Text(
-                      'Download the starter model above, or import your own.',
+                      'Import a model file from this phone to get started.',
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
@@ -352,6 +351,7 @@ class _ModelsScreenState extends ConsumerState<ModelsScreen> {
                   const Divider(height: 1),
                   for (var index = 0; index < models.length; index++) ...[
                     _ModelRow(
+                      key: ValueKey('model-${models[index].id}'),
                       index: index,
                       item: presentation(models[index]),
                       selected: models[index].id == selected?.id,
@@ -377,9 +377,9 @@ class _ModelsScreenState extends ConsumerState<ModelsScreen> {
   }
 }
 
-/// The animated processor SVG, gently floating. The asset carries its own
-/// float/pulse timing; we add the same bob on top so the mount reads as
-/// alive. Reduced motion (and widget tests) freeze it in place.
+/// The layered processor art, gently bobbing. flutter_svg draws SVG
+/// statically (no CSS animation, no filters), so all motion lives here.
+/// Reduced motion holds it still.
 class _LoadingArt extends StatefulWidget {
   const _LoadingArt({required this.width});
 
@@ -391,10 +391,6 @@ class _LoadingArt extends StatefulWidget {
 
 class _LoadingArtState extends State<_LoadingArt>
     with SingleTickerProviderStateMixin {
-  static final _inTest = WidgetsBinding.instance.runtimeType
-      .toString()
-      .contains('TestWidgetsFlutterBinding');
-
   late final AnimationController _clock = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 3800),
@@ -403,8 +399,7 @@ class _LoadingArtState extends State<_LoadingArt>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final still = MediaQuery.disableAnimationsOf(context) || _inTest;
-    if (still) {
+    if (MediaQuery.disableAnimationsOf(context)) {
       _clock.stop();
       _clock.value = .5;
     } else if (!_clock.isAnimating) {
@@ -420,12 +415,11 @@ class _LoadingArtState extends State<_LoadingArt>
 
   @override
   Widget build(BuildContext context) {
-    final still = MediaQuery.disableAnimationsOf(context) || _inTest;
     final svg = SvgPicture.asset(
-      'assets/art/animated_layered_processor.svg',
+      'assets/art/layered_processor.svg',
       width: widget.width,
     );
-    if (still) return svg;
+    if (MediaQuery.disableAnimationsOf(context)) return svg;
     return AnimatedBuilder(
       animation: _clock,
       builder: (context, child) {
@@ -557,7 +551,7 @@ class _ModelPresentation {
         ModelStatus.downloading || ModelStatus.paused => 'Download again',
         ModelStatus.downloaded => 'Load model',
         ModelStatus.loading => 'Loading model',
-        ModelStatus.loaded => 'Unload model',
+        ModelStatus.loaded => 'Start a chat',
         ModelStatus.error =>
           model.localPath != null ? 'Retry load' : 'Retry download',
       };
@@ -571,7 +565,7 @@ class _ModelPresentation {
           PrismGlyph.refresh,
         ModelStatus.downloaded => PrismGlyph.play,
         ModelStatus.loading => PrismGlyph.relay,
-        ModelStatus.loaded => PrismGlyph.chat,
+        ModelStatus.loaded => PrismGlyph.send,
       };
 
   PrismGlyph get statusGlyph => switch (status) {
@@ -583,17 +577,11 @@ class _ModelPresentation {
         ModelStatus.loaded => PrismGlyph.check,
         ModelStatus.error => PrismGlyph.warn,
       };
-
-  RelayPose get pose => switch (status) {
-        ModelStatus.loaded => RelayPose.ready,
-        ModelStatus.loading => RelayPose.loading,
-        ModelStatus.downloading when live => RelayPose.transfer,
-        _ => RelayPose.idle,
-      };
 }
 
 class _ModelRow extends StatelessWidget {
   const _ModelRow({
+    super.key,
     required this.index,
     required this.item,
     required this.selected,
@@ -607,136 +595,130 @@ class _ModelRow extends StatelessWidget {
   final VoidCallback? onSelect;
   final VoidCallback? onAction;
 
-  static const _identityTiles = [
-    (PrismRelay.peachSurface, PrismRelay.amberInk),
-    (PrismRelay.skySoft, PrismRelay.skyInk),
-    (PrismRelay.mintSurface, PrismRelay.greenInk),
-    (PrismRelay.lilacSoft, PrismRelay.plum),
-  ];
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final model = item.model;
-    // Color lives on the icons only, in a fixed orange → blue → green →
-    // purple rotation down the library.
-    final (tileBg, tileInk) = _identityTiles[index % _identityTiles.length];
-    final showBadge = item.model.recommendationBadge != null;
+    final (tileBg, tileInk) = PrismRelay.identityTile(index);
     // Live transfer is the only state line the tile keeps; everything else
     // (saved/errored/stopped) is hero-exclusive so the two never disagree.
+    // It wins over the badge so a download is visible on every row.
     final showDownloading =
         item.status == ModelStatus.downloading && item.live;
+    final badge = item.model.recommendationBadge;
     return Semantics(
       selected: selected,
       button: true,
       label: model.name,
-      child: InkWell(
-        onTap: onSelect,
+      child: Material(
+        type: MaterialType.transparency,
         borderRadius: BorderRadius.circular(16),
-        child: AnimatedContainer(
-          duration: MediaQuery.disableAnimationsOf(context)
-              ? Duration.zero
-              : PrismRelay.motion,
-          curve: PrismRelay.curve,
-          decoration: BoxDecoration(
-            color: selected ? PrismRelay.lilacSoft : Colors.transparent,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: selected ? PrismRelay.periwinkle : Colors.transparent,
-              width: 1.5,
+        child: InkWell(
+          onTap: onSelect,
+          borderRadius: BorderRadius.circular(16),
+          splashColor: PrismRelay.lilacSoft.withValues(alpha: .6),
+          highlightColor: PrismRelay.lilacSoft.withValues(alpha: .3),
+          child: AnimatedContainer(
+            duration: MediaQuery.disableAnimationsOf(context)
+                ? Duration.zero
+                : PrismRelay.motion,
+            curve: PrismRelay.curve,
+            decoration: BoxDecoration(
+              color: selected ? PrismRelay.lilacSoft : Colors.transparent,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: selected ? PrismRelay.periwinkle : Colors.transparent,
+                width: 1.5,
+              ),
             ),
-          ),
-          padding: const EdgeInsets.fromLTRB(10, 11, 6, 11),
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: tileBg,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: SizedBox.square(
-                      dimension: 42,
-                      child: PrismIcon(
-                        PrismGlyph.models,
-                        color: tileInk,
-                        size: 20,
-                      ),
+            padding: const EdgeInsets.fromLTRB(10, 11, 6, 11),
+            child: Row(
+              children: [
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: tileBg,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: SizedBox.square(
+                    dimension: 42,
+                    child: PrismIcon(
+                      PrismGlyph.models,
+                      color: tileInk,
+                      size: 20,
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          model.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.titleSmall,
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          item.metadata,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodySmall,
-                        ),
-                        if (showBadge)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: _GrayPill(item.model.recommendationBadge!),
-                          )
-                        else if (showDownloading)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 2),
-                            child: AnimatedSwitcher(
-                              duration: MediaQuery.disableAnimationsOf(context)
-                                  ? Duration.zero
-                                  : PrismRelay.motion,
-                              switchInCurve: PrismRelay.curve,
-                              switchOutCurve: PrismRelay.curve,
-                              child: Text(
-                                item.label,
-                                key: ValueKey(item.label),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.labelMedium?.copyWith(
-                                  color: PrismRelay.plum,
-                                  fontSize: 12.5,
-                                  fontWeight: FontWeight.w700,
-                                ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        model.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleSmall,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        item.metadata,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall,
+                      ),
+                      if (showDownloading)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: AnimatedSwitcher(
+                            duration: MediaQuery.disableAnimationsOf(context)
+                                ? Duration.zero
+                                : PrismRelay.motion,
+                            switchInCurve: PrismRelay.curve,
+                            switchOutCurve: PrismRelay.curve,
+                            child: Text(
+                              item.label,
+                              key: ValueKey(item.label),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.labelMedium?.copyWith(
+                                color: PrismRelay.plum,
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w700,
                               ),
                             ),
                           ),
-                      ],
+                        )
+                      else if (badge != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: _GrayPill(badge),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 4),
+                IconButton(
+                  tooltip: item.status == ModelStatus.loaded
+                      ? 'Unload model'
+                      : item.actionLabel,
+                  onPressed: onAction,
+                  icon: PrismIcon(
+                    item.status == ModelStatus.loaded
+                        ? PrismGlyph.unload
+                        : item.actionIcon,
+                    size: 20,
+                  ),
+                  style: IconButton.styleFrom(
+                    backgroundColor: PrismRelay.lilacSoft,
+                    foregroundColor: PrismRelay.plum,
+                    minimumSize: const Size.square(44),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(13),
                     ),
                   ),
-                  const SizedBox(width: 4),
-                  IconButton(
-                    tooltip: item.status == ModelStatus.loaded
-                        ? 'Unload model'
-                        : item.actionLabel,
-                    onPressed: onAction,
-                    icon: PrismIcon(
-                      item.status == ModelStatus.loaded
-                          ? PrismGlyph.unload
-                          : item.actionIcon,
-                      size: 20,
-                    ),
-                    style: IconButton.styleFrom(
-                      backgroundColor: PrismRelay.lilacSoft,
-                      foregroundColor: PrismRelay.plum,
-                      minimumSize: const Size.square(44),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(13),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -797,11 +779,12 @@ class _SkeletonBar extends StatelessWidget {
       );
 }
 
+/// The transfer bar inside the violet hero: translucent white track, peach
+/// fill. Indeterminate until the first byte count arrives.
 class _TransferProgress extends StatelessWidget {
-  const _TransferProgress({super.key, required this.value, this.onDark = false});
+  const _TransferProgress({super.key, required this.value});
 
   final double? value;
-  final bool onDark;
 
   @override
   Widget build(BuildContext context) {
@@ -812,9 +795,8 @@ class _TransferProgress extends StatelessWidget {
               fraction == null ? 'In progress' : 'Download progress',
           minHeight: 5,
           borderRadius: BorderRadius.circular(6),
-          color: onDark ? PrismRelay.peach : PrismRelay.amberInk,
-          backgroundColor:
-              onDark ? const Color(0x3DFFFFFF) : PrismRelay.peachSurface,
+          color: PrismRelay.peach,
+          backgroundColor: const Color(0x3DFFFFFF),
         );
     if (value == null || reduce) return indicator(value);
     return TweenAnimationBuilder<double>(
@@ -823,12 +805,6 @@ class _TransferProgress extends StatelessWidget {
       builder: (_, progress, __) => indicator(progress),
     );
   }
-}
-
-/// The transfer bar rendered inside the violet hero — white track, peach
-/// fill, always visible while bytes move.
-class _HeroProgress extends _TransferProgress {
-  const _HeroProgress({super.key, super.value}) : super(onDark: true);
 }
 
 /// Quiet recommendation pill — same warm grey for every badge so only the
@@ -842,7 +818,7 @@ class _GrayPill extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: const Color(0xFFECEAF0),
+        color: PrismRelay.pillGray,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Padding(
@@ -850,7 +826,7 @@ class _GrayPill extends StatelessWidget {
         child: Text(
           label,
           style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: const Color(0xFF716E7D),
+                color: PrismRelay.pillGrayInk,
                 fontSize: 11.5,
                 fontWeight: FontWeight.w700,
               ),

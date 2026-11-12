@@ -125,7 +125,7 @@ flutter:
     - assets/vocab.txt
     - assets/fonts/PlusJakartaSans-var.ttf
     - assets/art/tech-chip.png
-    - assets/art/animated_layered_processor.svg
+    - assets/art/layered_processor.svg
 
   fonts:
     # One variable TTF (OFL) driven through several weight entries so Flutter

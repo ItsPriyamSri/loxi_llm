@@ -14,6 +14,7 @@ import '../../../core/services/tts_service.dart';
 import '../../../core/services/file_storage_service.dart';
 import '../../../core/platform/haptics.dart';
 import '../../../core/theme/prism_relay.dart';
+import '../../../core/widgets/prism_blocks.dart';
 import '../../../core/widgets/prism_icon.dart';
 import '../../agent/agent_model_support.dart';
 import '../../models/domain/model.dart';
@@ -113,6 +114,8 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
 
   @override
   void dispose() {
+    // Leaving the chat ends read-aloud; nothing else on screen could stop
+    // it. Every callback that follows checks `mounted`.
     _tts.stop();
     _textController.dispose();
     _scrollController.dispose();
@@ -150,7 +153,6 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
   }
 
   Future<void> _sendMessage() async {
-    Haptics.commit();
     if (_submitting ||
         ref.read(inferenceNotifierProvider).asData?.value == null) {
       return;
@@ -159,6 +161,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
     final text = rawText.trim();
     final imagePath = _attachedImagePath;
     if (text.isEmpty && imagePath == null) return;
+    Haptics.commit();
     // Clear the composer immediately/optimistically, text and attachment
     // together, rather than waiting for send() to resolve — which for an
     // agent-mode turn can take a long time (it awaits the whole turn, not
@@ -446,8 +449,8 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
   }
 
   Future<void> _stopGeneration() async {
-    Haptics.tap();
     if (_stopRequested) return;
+    Haptics.tap();
     setState(() => _stopRequested = true);
     try {
       await Future.wait([
@@ -537,6 +540,24 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
       child: Row(spacing: 6, children: actions),
     );
   }
+
+  List<Widget> _blankHeader(ThemeData theme, String hint) => [
+        const PrismBrandMark(size: 46),
+        const SizedBox(height: 16),
+        Text(
+          "What's on your mind?",
+          textAlign: TextAlign.center,
+          style: theme.textTheme.displaySmall,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          hint,
+          textAlign: TextAlign.center,
+          style: theme.textTheme.bodyMedium
+              ?.copyWith(color: PrismRelay.inkSecondary),
+        ),
+        const SizedBox(height: 18),
+      ];
 
   void _openModels() {
     final shell = StatefulNavigationShell.maybeOf(context);
@@ -631,6 +652,8 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
     final showJump = !_following && _newerBelow;
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: PrismRelay.canvas,
+        surfaceTintColor: Colors.transparent,
         toolbarHeight:
             MediaQuery.textScalerOf(context).scale(16) > 23 ? 80 : 60,
         leading: Navigator.canPop(context) ? const BackButton() : null,
@@ -713,13 +736,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
       ),
       body: Stack(
         children: [
-          const Positioned.fill(
-            child: IgnorePointer(
-              child: CustomPaint(
-                painter: _ConversationAmbientPainter(),
-              ),
-            ),
-          ),
+          const Positioned.fill(child: PrismAmbientWash()),
           LayoutBuilder(
             builder: (context, viewport) => Column(
             children: [
@@ -772,22 +789,8 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                                     key: const ValueKey('saved-prompts'),
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      const PrismBrandMark(size: 46),
-                                      const SizedBox(height: 16),
-                                      Text(
-                                        "What's on your mind?",
-                                        textAlign: TextAlign.center,
-                                        style: theme.textTheme.displaySmall,
-                                      ),
-                                      const SizedBox(height: 8),
-                                      Text(
-                                        'Pick a template, or ask Loki anything.',
-                                        textAlign: TextAlign.center,
-                                        style: theme.textTheme.bodyMedium
-                                            ?.copyWith(
-                                                color: PrismRelay.inkSecondary),
-                                      ),
-                                      const SizedBox(height: 18),
+                                      ..._blankHeader(theme,
+                                          'Pick a template, or ask Loki anything.'),
                                       GridView.builder(
                                         shrinkWrap: true,
                                         physics:
@@ -826,22 +829,8 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                                     key: const ValueKey('center-shortcuts'),
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      const PrismBrandMark(size: 46),
-                                      const SizedBox(height: 16),
-                                      Text(
-                                        "What's on your mind?",
-                                        textAlign: TextAlign.center,
-                                        style: theme.textTheme.displaySmall,
-                                      ),
-                                      const SizedBox(height: 8),
-                                      Text(
-                                        'Short on words? Start with one of these.',
-                                        textAlign: TextAlign.center,
-                                        style: theme.textTheme.bodyMedium
-                                            ?.copyWith(
-                                                color: PrismRelay.inkSecondary),
-                                      ),
-                                      const SizedBox(height: 18),
+                                      ..._blankHeader(theme,
+                                          'Short on words? Start with one of these.'),
                                       _shortcuts(centered: true),
                                     ],
                                   ),
@@ -936,37 +925,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
               if (error != null)
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Semantics(
-                    liveRegion: true,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: PrismRelay.blush,
-                        borderRadius: BorderRadius.circular(16),
-                        border:
-                            Border.all(color: const Color(0xFFF3C4C4)),
-                      ),
-                      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-                      child: Row(
-                        children: [
-                          const PrismIcon(PrismGlyph.warn,
-                              size: 20, color: PrismRelay.errorInk),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              error,
-                              maxLines: 3,
-                              overflow: TextOverflow.ellipsis,
-                              style:
-                                  Theme.of(context).textTheme.bodySmall?.copyWith(
-                                        color: PrismRelay.errorInk,
-                                        fontSize: 13,
-                                      ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+                  child: PrismErrorBanner(message: error),
                 ),
               if (blank &&
                   conversation.systemPrompt.isEmpty &&
@@ -1255,10 +1214,6 @@ class _ThinkingRow extends StatefulWidget {
 
 class _ThinkingRowState extends State<_ThinkingRow>
     with SingleTickerProviderStateMixin {
-  static final _inTest = WidgetsBinding.instance.runtimeType
-      .toString()
-      .contains('TestWidgetsFlutterBinding');
-
   late final AnimationController _clock = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1100),
@@ -1267,8 +1222,7 @@ class _ThinkingRowState extends State<_ThinkingRow>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final still = MediaQuery.disableAnimationsOf(context) || _inTest;
-    if (still) {
+    if (MediaQuery.disableAnimationsOf(context)) {
       _clock.stop();
     } else if (!_clock.isAnimating) {
       _clock.repeat();
@@ -1287,7 +1241,7 @@ class _ThinkingRowState extends State<_ThinkingRow>
           color: PrismRelay.inkSecondary,
           fontWeight: FontWeight.w600,
         );
-    final reduce = MediaQuery.disableAnimationsOf(context) || _inTest;
+    final reduce = MediaQuery.disableAnimationsOf(context);
     return Semantics(
       liveRegion: true,
       label: 'Thinking…',
@@ -1525,36 +1479,4 @@ class _AttachRow extends StatelessWidget {
       ),
     );
   }
-}
-
-/// Static ambient for the conversation: two soft washes. Painted once;
-/// nothing animates.
-class _ConversationAmbientPainter extends CustomPainter {
-  const _ConversationAmbientPainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final bounds = Offset.zero & size;
-    canvas.drawRect(
-      bounds,
-      Paint()
-        ..shader = const RadialGradient(
-          center: Alignment(-.9, -.8),
-          radius: 1.25,
-          colors: [Color(0x57E9DFFA), Color(0x00E9DFFA)],
-        ).createShader(bounds),
-    );
-    canvas.drawRect(
-      bounds,
-      Paint()
-        ..shader = const RadialGradient(
-          center: Alignment(1.05, .9),
-          radius: 1.3,
-          colors: [Color(0x3AFDEBDD), Color(0x00FDEBDD)],
-        ).createShader(bounds),
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

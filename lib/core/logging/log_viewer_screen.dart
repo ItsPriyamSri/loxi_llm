@@ -139,7 +139,7 @@ class _LogViewerScreenState extends State<LogViewerScreen> {
 
   Widget _buildFileView(BuildContext context) {
     if (_readingFile) return const Center(child: CircularProgressIndicator());
-    if (_fileContents.startsWith('Failed to read log file:')) {
+    if (_fileContents.startsWith(AppLogger.readFailurePrefix)) {
       return Center(
           child: TextButton(
               onPressed: _loadFile,

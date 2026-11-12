@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/platform/haptics.dart';
 import '../../../core/theme/prism_relay.dart';
 import '../../../core/widgets/prism_art.dart';
+import '../../../core/widgets/prism_blocks.dart';
 import '../../../core/widgets/prism_hero.dart';
 import '../../../core/widgets/prism_icon.dart';
 import '../domain/document.dart';
@@ -81,7 +82,7 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
     final canImport = !_pickerOpen && !_deleting && !state.isLoading;
     final message = _actionError ??
         (state.hasError
-            ? state.error == 'File too large (max 10 MB)'
+            ? state.error is DocumentTooLargeException
                 ? 'The file exceeds the 10 MB limit.'
                 : 'Could not read the document library or complete the import.'
             : null);
@@ -117,8 +118,9 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
             ),
           const SizedBox(height: 18),
           if (message != null)
-            _ErrorBanner(
+            PrismErrorBanner(
               message: message,
+              retryTooltip: 'Reload document library',
               onRetry: () {
                 setState(() => _actionError = null);
                 ref.invalidate(documentsNotifierProvider);
@@ -127,18 +129,20 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
           else if (state.isLoading && !importing && _lastDocuments.isEmpty)
             const Padding(
               padding: EdgeInsets.only(top: 32),
-              child: Center(child: CircularProgressIndicator(
-                color: PrismRelay.accent,
-              )),
+              child: Center(child: CircularProgressIndicator()),
             )
           else if (!state.isLoading && _lastDocuments.isEmpty)
             const _EmptyLibrary(),
           if (_lastDocuments.isNotEmpty) ...[
-            const _SectionHeader('Imported documents'),
+            const PrismSectionHeader(
+              'Imported documents',
+              padding: EdgeInsets.fromLTRB(6, 16, 6, 4),
+            ),
             const SizedBox(height: 2),
           ],
           for (var index = 0; index < _lastDocuments.length; index++) ...[
             _DocumentRow(
+              key: ValueKey('document-${_lastDocuments[index].id}'),
               index: index,
               document: _lastDocuments[index],
               canDelete: canImport,
@@ -152,33 +156,9 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
   }
 }
 
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader(this.label);
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(6, 16, 6, 4),
-      child: Semantics(
-        header: true,
-        child: Text(
-          label.toUpperCase(),
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: PrismRelay.inkMuted,
-                fontSize: 11,
-                letterSpacing: 1.4,
-                fontWeight: FontWeight.w700,
-              ),
-        ),
-      ),
-    );
-  }
-}
-
 class _DocumentRow extends StatelessWidget {
   const _DocumentRow({
+    super.key,
     required this.index,
     required this.document,
     required this.canDelete,
@@ -192,16 +172,9 @@ class _DocumentRow extends StatelessWidget {
   final Future<void> Function(Document document) onDelete;
   final bool showDivider;
 
-  static const _tiles = [
-    (PrismRelay.peachSurface, PrismRelay.amberInk),
-    (PrismRelay.skySoft, PrismRelay.skyInk),
-    (PrismRelay.mintSurface, PrismRelay.greenInk),
-    (PrismRelay.lilacSoft, PrismRelay.plum),
-  ];
-
   @override
   Widget build(BuildContext context) {
-    final (tileBg, tileInk) = _tiles[index % _tiles.length];
+    final (tileBg, tileInk) = PrismRelay.identityTile(index);
     return Column(
       children: [
         Tooltip(
@@ -293,46 +266,6 @@ class _EmptyLibrary extends StatelessWidget {
             'Your PDFs and notes will show up here with their chunk counts.',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodySmall,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ErrorBanner extends StatelessWidget {
-  const _ErrorBanner({required this.message, required this.onRetry});
-
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: PrismRelay.blush,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFF3C4C4)),
-      ),
-      padding: const EdgeInsets.fromLTRB(12, 6, 4, 6),
-      child: Row(
-        children: [
-          const PrismIcon(PrismGlyph.warn, size: 20, color: PrismRelay.errorInk),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              message,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: PrismRelay.errorInk,
-                    fontSize: 13,
-                  ),
-            ),
-          ),
-          IconButton(
-            tooltip: 'Reload document library',
-            onPressed: onRetry,
-            icon: const PrismIcon(PrismGlyph.refresh,
-                size: 20, color: PrismRelay.errorInk),
           ),
         ],
       ),

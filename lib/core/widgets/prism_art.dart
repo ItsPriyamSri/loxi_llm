@@ -2,44 +2,27 @@ import 'package:flutter/material.dart';
 
 import '../theme/prism_relay.dart';
 
-enum PrismArtwork { relay, document, chat }
-
-enum RelayPose { idle, transfer, loading, ready }
+/// Painted illustrations. [relay] is the welcome page's plate stack,
+/// [document] the Documents hero page.
+enum PrismArtwork { relay, document }
 
 class PrismArt extends StatelessWidget {
   const PrismArt({
     super.key,
     this.artwork = PrismArtwork.relay,
-    this.pose = RelayPose.idle,
     this.size = PrismRelay.artStage,
   });
 
   final PrismArtwork artwork;
-  final RelayPose pose;
   final double size;
 
   @override
   Widget build(BuildContext context) {
-    final target = switch (pose) {
-      RelayPose.idle => 0.0,
-      RelayPose.transfer => 1.0,
-      RelayPose.loading => .7,
-      RelayPose.ready => -1.0,
-    };
     return ExcludeSemantics(
       child: RepaintBoundary(
-        child: TweenAnimationBuilder<double>(
-          tween: Tween(end: target),
-          duration: MediaQuery.disableAnimationsOf(context)
-              ? Duration.zero
-              : pose == RelayPose.ready
-                  ? PrismRelay.seat
-                  : PrismRelay.lift,
-          curve: PrismRelay.curve,
-          builder: (_, position, __) => CustomPaint(
-            size: Size.square(size),
-            painter: _ArtworkPainter(artwork, position),
-          ),
+        child: CustomPaint(
+          size: Size.square(size),
+          painter: _ArtworkPainter(artwork),
         ),
       ),
     );
@@ -47,10 +30,9 @@ class PrismArt extends StatelessWidget {
 }
 
 class _ArtworkPainter extends CustomPainter {
-  const _ArtworkPainter(this.artwork, this.position);
+  const _ArtworkPainter(this.artwork);
 
   final PrismArtwork artwork;
-  final double position;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -61,8 +43,6 @@ class _ArtworkPainter extends CustomPainter {
         _relay(canvas);
       case PrismArtwork.document:
         _document(canvas);
-      case PrismArtwork.chat:
-        _chat(canvas);
     }
     canvas.restore();
   }
@@ -77,9 +57,9 @@ class _ArtworkPainter extends CustomPainter {
           colors: [Color(0x18575078), Color(0x00575078)],
         ).createShader(const Rect.fromLTWH(34, 149, 132, 30)),
     );
-    _plate(canvas, 122 + position * 18, const Color(0xFF9F90DC),
+    _plate(canvas, 122, const Color(0xFF9F90DC),
         const Color(0xFFD9CEF5));
-    _plate(canvas, 104 + position * 9, const Color(0xFFB6A7EB),
+    _plate(canvas, 104, const Color(0xFFB6A7EB),
         const Color(0xFFE8DDFC));
     _plate(canvas, 86, const Color(0xFFFCF8FF), const Color(0xFFC9B8F3));
     canvas.drawPath(_diamond(86, .8), Paint()..color = const Color(0x58AC9BE7));
@@ -90,7 +70,7 @@ class _ArtworkPainter extends CustomPainter {
       Paint()
         ..shader = RadialGradient(
           colors: [
-            PrismRelay.peach.withValues(alpha: position < 0 ? .62 : .29),
+            PrismRelay.peach.withValues(alpha: .29),
             PrismRelay.peach.withValues(alpha: 0),
           ],
         ).createShader(const Rect.fromLTWH(71, 57, 58, 58)),
@@ -197,46 +177,7 @@ class _ArtworkPainter extends CustomPainter {
         const Offset(117, 132), 4, Paint()..color = PrismRelay.peach);
   }
 
-  void _chat(Canvas canvas) {
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-          const Rect.fromLTWH(59, 66, 99, 63), const Radius.circular(18)),
-      Paint()..color = PrismRelay.lilac,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-          const Rect.fromLTWH(42, 52, 101, 63), const Radius.circular(18)),
-      Paint()..color = PrismRelay.surface,
-    );
-    canvas.drawPath(
-      Path()
-        ..moveTo(52, 103)
-        ..lineTo(49, 124)
-        ..lineTo(73, 110)
-        ..close(),
-      Paint()..color = PrismRelay.surface,
-    );
-    final stroke = Paint()
-      ..color = PrismRelay.periwinkle
-      ..strokeWidth = 4
-      ..strokeCap = StrokeCap.round;
-    canvas.drawLine(const Offset(61, 76), const Offset(115, 76), stroke);
-    canvas.drawLine(const Offset(61, 91), const Offset(97, 91), stroke);
-    canvas.drawCircle(
-        const Offset(145, 125), 13, Paint()..color = PrismRelay.mint);
-    canvas.drawPath(
-      Path()
-        ..moveTo(139, 125)
-        ..lineTo(143, 129)
-        ..lineTo(151, 120),
-      Paint()
-        ..color = PrismRelay.greenInk
-        ..strokeWidth = 2.2
-        ..style = PaintingStyle.stroke,
-    );
-  }
-
   @override
   bool shouldRepaint(_ArtworkPainter oldDelegate) =>
-      artwork != oldDelegate.artwork || position != oldDelegate.position;
+      artwork != oldDelegate.artwork;
 }

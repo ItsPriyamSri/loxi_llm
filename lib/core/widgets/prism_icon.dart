@@ -31,7 +31,6 @@ enum PrismGlyph {
   warn,
   clock,
   graph,
-  search,
   lock,
   link,
   send,
@@ -68,7 +67,6 @@ const _glyphs = <PrismGlyph, IconData>{
   PrismGlyph.warn: LucideIcons.triangleAlert,
   PrismGlyph.clock: LucideIcons.clock,
   PrismGlyph.graph: LucideIcons.chartLine,
-  PrismGlyph.search: LucideIcons.search,
   PrismGlyph.lock: LucideIcons.lock,
   PrismGlyph.link: LucideIcons.link,
   PrismGlyph.send: LucideIcons.arrowRight,
@@ -100,7 +98,6 @@ class PrismIcon extends StatelessWidget {
       _glyphs[glyph]!,
       size: size ?? (theme.size ?? 24).clamp(20.0, 24.0),
       color: resolved,
-      semanticLabel: null,
     );
     if (!mirror || Directionality.of(context) != TextDirection.rtl) {
       return icon;

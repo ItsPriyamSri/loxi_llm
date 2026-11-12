@@ -60,7 +60,7 @@ class _Library extends DocumentsNotifier {
   }
 
   void failImport() {
-    state = const AsyncError('File too large (max 10 MB)', StackTrace.empty);
+    state = const AsyncError(DocumentTooLargeException(), StackTrace.empty);
     _import.complete();
   }
 }

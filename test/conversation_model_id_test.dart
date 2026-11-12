@@ -137,7 +137,10 @@ void main() {
       await tester.enterText(find.byType(TextField), 'Check the first token');
       await tester.pump();
       await tester.tap(find.byTooltip('Send message'));
-      await tester.pumpAndSettle();
+      // The thinking dots repeat until the first token, so the frame never
+      // settles; pump past the send instead.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
 
       expect(find.text('Thinking…'), findsOneWidget);
       await tester.tap(find.byTooltip('Stop generating'));

@@ -32,7 +32,7 @@ class PrismDock extends StatelessWidget {
         type: MaterialType.transparency,
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: PrismRelay.surface.withValues(alpha: .92),
+            color: PrismRelay.surface.withValues(alpha: .94),
             borderRadius: BorderRadius.circular(26),
             border: Border.all(color: PrismRelay.lineStrong),
             boxShadow: const [

@@ -14,6 +14,7 @@ import '../logging/log_viewer_screen.dart';
 import '../logging/model_io_log_screen.dart';
 import '../providers/shared_preferences_provider.dart';
 import '../widgets/prism_dock.dart';
+import '../theme/prism_relay.dart';
 
 part 'app_router.g.dart';
 
@@ -152,6 +153,7 @@ class _ScaffoldWithNavBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: PrismRelay.canvas,
       body: navigationShell,
       bottomNavigationBar: PrismDock(
         selectedIndex: navigationShell.currentIndex,

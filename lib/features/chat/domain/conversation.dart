@@ -3,6 +3,15 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 part 'conversation.freezed.dart';
 part 'conversation.g.dart';
 
+/// Title a chat carries until its first message names it.
+const kNewChatTitle = 'New chat';
+
+/// Whether [title] is still a placeholder. Includes 'New conversation', the
+/// placeholder before the UI refresh, so chats saved under it still get
+/// named by their first message.
+bool isPlaceholderChatTitle(String title) =>
+    title == kNewChatTitle || title == 'New conversation';
+
 @freezed
 class Conversation with _$Conversation {
   const Conversation._();

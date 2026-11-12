@@ -21,7 +21,7 @@ class ConversationListNotifier extends _$ConversationListNotifier {
     final now = DateTime.now().millisecondsSinceEpoch;
     final conversation = Conversation(
       id: id,
-      title: 'New chat',
+      title: kNewChatTitle,
       systemPrompt: systemPrompt,
       modelId: modelId,
       createdAtMs: now,

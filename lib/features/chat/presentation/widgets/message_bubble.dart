@@ -93,24 +93,17 @@ class MessageBubble extends StatelessWidget {
           maxWidth: isUser ? MediaQuery.sizeOf(context).width * .82 : 640,
         ),
         decoration: BoxDecoration(
-          gradient: isUser
-              ? const LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [Color(0xFFF0E9FC), Color(0xFFE4DAF8)],
-                )
-              : const LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [Color(0xFFF2F7FD), Color(0xFFE2EBF7)],
-                ),
+          color: isUser ? PrismRelay.userBubble : PrismRelay.skySoft,
           border: Border.all(
-              color: isUser ? const Color(0xFFCFBEEB) : const Color(0xFFDDE5F1)),
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(18),
-            topRight: const Radius.circular(18),
-            bottomLeft: Radius.circular(isUser ? 18 : 4),
-            bottomRight: Radius.circular(isUser ? 4 : 18),
+              color: isUser
+                  ? PrismRelay.userBubbleBorder
+                  : PrismRelay.replyBubbleBorder),
+          // The tail corner follows the bubble's side, in either direction.
+          borderRadius: BorderRadiusDirectional.only(
+            topStart: const Radius.circular(18),
+            topEnd: const Radius.circular(18),
+            bottomStart: Radius.circular(isUser ? 18 : 4),
+            bottomEnd: Radius.circular(isUser ? 4 : 18),
           ),
           boxShadow: PrismRelay.hairline,
         ),
@@ -119,68 +112,68 @@ class MessageBubble extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: [
-            if (imagePath != null) ...[
-              ImageAttachmentThumbnail(path: imagePath!, size: 200),
-              const SizedBox(height: 8),
+              if (imagePath != null) ...[
+                ImageAttachmentThumbnail(path: imagePath!, size: 200),
+                const SizedBox(height: 8),
+              ],
+              if (child != null || (content?.isNotEmpty ?? false))
+                child ??
+                    ChatMarkdownText(
+                      content!,
+                      style: const TextStyle(
+                          color: PrismRelay.ink, fontSize: 15, height: 1.5),
+                      isStreaming: isStreaming,
+                    ),
+              if (showFooter) ...[
+                const SizedBox(height: 4),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    if (speedLabel != null)
+                      _MetricChip(
+                        glyph: PrismGlyph.speed,
+                        label: speedLabel!,
+                      ),
+                    if (timeLabel != null)
+                      _MetricChip(
+                        glyph: PrismGlyph.clock,
+                        label: timeLabel!,
+                      ),
+                    const Spacer(),
+                    if (onCopy != null)
+                      _ActionIcon(
+                        icon: PrismGlyph.copy,
+                        tooltip: 'Copy message',
+                        onPressed: onCopy!,
+                        color: PrismRelay.inkSecondary,
+                      ),
+                    if (onReadAloud != null)
+                      _ActionIcon(
+                        icon: isPaused
+                            ? PrismGlyph.play
+                            : isSpeaking
+                                ? PrismGlyph.pause
+                                : PrismGlyph.audio,
+                        tooltip: isPaused
+                            ? 'Resume reading'
+                            : isSpeaking
+                                ? 'Pause reading'
+                                : 'Read aloud',
+                        onPressed: onReadAloud!,
+                        color: PrismRelay.inkSecondary,
+                      ),
+                    if (onStopReadAloud != null)
+                      _ActionIcon(
+                        icon: PrismGlyph.stop,
+                        tooltip: 'Stop reading',
+                        onPressed: onStopReadAloud!,
+                        color: PrismRelay.inkSecondary,
+                      ),
+                  ],
+                ),
+              ],
             ],
-            if (child != null || (content?.isNotEmpty ?? false))
-              child ??
-                  ChatMarkdownText(
-                    content!,
-                    style: const TextStyle(
-                        color: PrismRelay.ink, fontSize: 15, height: 1.5),
-                    isStreaming: isStreaming,
-                  ),
-            if (showFooter) ...[
-              const SizedBox(height: 4),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  if (speedLabel != null)
-                    _MetricChip(
-                      glyph: PrismGlyph.speed,
-                      label: speedLabel!,
-                    ),
-                  if (timeLabel != null)
-                    _MetricChip(
-                      glyph: PrismGlyph.clock,
-                      label: timeLabel!,
-                    ),
-                  const Spacer(),
-                  if (onCopy != null)
-                    _ActionIcon(
-                      icon: PrismGlyph.copy,
-                      tooltip: 'Copy message',
-                      onPressed: onCopy!,
-                      color: PrismRelay.inkSecondary,
-                    ),
-                  if (onReadAloud != null)
-                    _ActionIcon(
-                      icon: isPaused
-                          ? PrismGlyph.play
-                          : isSpeaking
-                              ? PrismGlyph.pause
-                              : PrismGlyph.audio,
-                      tooltip: isPaused
-                          ? 'Resume reading'
-                          : isSpeaking
-                              ? 'Pause reading'
-                              : 'Read aloud',
-                      onPressed: onReadAloud!,
-                      color: PrismRelay.inkSecondary,
-                    ),
-                  if (onStopReadAloud != null)
-                    _ActionIcon(
-                      icon: PrismGlyph.stop,
-                      tooltip: 'Stop reading',
-                      onPressed: onStopReadAloud!,
-                      color: PrismRelay.inkSecondary,
-                    ),
-                ],
-              ),
-            ],
-          ],
-        ),
+          ),
         ),
       ),
     );

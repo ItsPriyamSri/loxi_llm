@@ -6,9 +6,11 @@ import 'prism_icon.dart';
 
 /// Which panel treatment a [PrismHero] wears.
 ///
-/// Hue means state, not decoration: violet while a model is dormant, in
-/// flight or failed, mint when it is resident, plain for neutral panels.
-enum PrismHeroVariant { violet, mint, plain }
+/// Violet for the model and chat heroes, mint for the document library.
+enum PrismHeroVariant { violet, mint }
+
+/// The chip illustration worn by the Models and Chat heroes.
+const kChipArt = 'assets/art/tech-chip.png';
 
 /// The shared 200 dp hero tile used on the pages with a hero.
 ///
@@ -30,7 +32,6 @@ class PrismHero extends StatelessWidget {
     this.onAction,
     this.actionEnabled = true,
     this.artwork = PrismArtwork.relay,
-    this.pose = RelayPose.idle,
     this.artImageAsset,
     this.cornerActionLabel,
     this.cornerActionGlyph,
@@ -59,10 +60,8 @@ class PrismHero extends StatelessWidget {
   final bool actionEnabled;
 
   final PrismArtwork artwork;
-  final RelayPose pose;
 
-  /// Optional raster art (transparent PNG) that replaces the painted
-  /// artwork. Used when the authored illustration asset is preferred.
+  /// Optional raster art (transparent PNG) shown instead of [artwork].
   final String? artImageAsset;
 
   /// A whisper-of-a-pill pinned to the hero's top right (e.g. "Unload").
@@ -75,7 +74,6 @@ class PrismHero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final reduceMotion = MediaQuery.disableAnimationsOf(context);
     final foreground = _dark ? Colors.white : PrismRelay.ink;
     final wash = _dark ? const Color(0xFFFFFFFF) : PrismRelay.surface;
 
@@ -101,7 +99,7 @@ class PrismHero extends StatelessWidget {
                 wash.withValues(alpha: 0),
               ]),
             ),
-            child: PrismArt(artwork: artwork, pose: pose, size: width),
+            child: PrismArt(artwork: artwork, size: width),
           )
         : Image.asset(
             artImageAsset!,
@@ -155,9 +153,7 @@ class PrismHero extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                     color: _dark
                         ? const Color(0xFFEDE7FF)
-                        : variant == PrismHeroVariant.mint
-                            ? const Color(0xFF31655A)
-                            : PrismRelay.inkSecondary,
+                        : const Color(0xFF31655A),
                   ),
                   child: detail!,
                 ),
@@ -186,9 +182,10 @@ class PrismHero extends StatelessWidget {
       ),
     );
 
-    final reduce = reduceMotion ? Duration.zero : PrismRelay.motion;
     return AnimatedContainer(
-      duration: reduce,
+      duration: MediaQuery.disableAnimationsOf(context)
+          ? Duration.zero
+          : PrismRelay.motion,
       curve: PrismRelay.curve,
       width: double.infinity,
       constraints: const BoxConstraints(minHeight: PrismRelay.heroHeight),
@@ -205,17 +202,9 @@ class PrismHero extends StatelessWidget {
               end: Alignment(.82, 1.05),
               colors: [Color(0xFFEAF8F0), Color(0xFFDDF1E6), Color(0xFFD0EBDD)],
             ),
-          PrismHeroVariant.plain => null,
         },
-        color: variant == PrismHeroVariant.plain ? PrismRelay.surface : null,
         borderRadius: BorderRadius.circular(22),
-        border: variant == PrismHeroVariant.violet
-            ? null
-            : Border.all(
-                color: variant == PrismHeroVariant.mint
-                    ? const Color(0xFFC9E6D6)
-                    : PrismRelay.line,
-              ),
+        border: _dark ? null : Border.all(color: const Color(0xFFC9E6D6)),
         boxShadow: switch (variant) {
           PrismHeroVariant.violet => const [
               BoxShadow(
@@ -234,69 +223,68 @@ class PrismHero extends StatelessWidget {
                 spreadRadius: -14,
               ),
             ],
-          PrismHeroVariant.plain => PrismRelay.hairline,
         },
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(22),
         child: Stack(
-        children: [
-          // Decorative optic flare — static, only on the violet panel.
-          if (_dark && !reduceMotion)
-            const Positioned(
-              top: -70,
-              right: -54,
-              child: IgnorePointer(
-                child: _HeroFlare(),
+          children: [
+            // Decorative optic flare — static, only on the violet panel.
+            if (_dark)
+              const Positioned(
+                top: -70,
+                right: -54,
+                child: IgnorePointer(
+                  child: _HeroFlare(),
+                ),
               ),
-            ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 8, 12),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final bigText = MediaQuery.textScalerOf(context).scale(16) > 23;
-                if (bigText) {
-                  // At large text the hero stacks: art floats top-right,
-                  // the CTA keeps the full width instead of being squeezed.
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 8, 12),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final bigText = MediaQuery.textScalerOf(context).scale(16) > 23;
+                  if (bigText) {
+                    // At large text the hero stacks: art floats top-right,
+                    // the CTA keeps the full width instead of being squeezed.
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Align(
+                          alignment: AlignmentDirectional.centerEnd,
+                          child: artFor(88),
+                        ),
+                        content,
+                      ],
+                    );
+                  }
+                  final artSize =
+                      (constraints.maxWidth * .46).clamp(120.0, PrismRelay.artStage);
+                  return Row(
                     children: [
-                      Align(
-                        alignment: AlignmentDirectional.centerEnd,
-                        child: artFor(88),
+                      Expanded(child: content),
+                      SizedBox(
+                        width: artSize,
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: artFor(artSize),
+                        ),
                       ),
-                      content,
                     ],
                   );
-                }
-                final artSize =
-                    (constraints.maxWidth * .46).clamp(120.0, PrismRelay.artStage);
-                return Row(
-                  children: [
-                    Expanded(child: content),
-                    SizedBox(
-                      width: artSize,
-                      child: Align(
-                        alignment: Alignment.centerRight,
-                        child: artFor(artSize),
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
-          ),
-          if (cornerActionLabel != null)
-            Positioned(
-              top: 14,
-              right: 14,
-              child: _CornerPill(
-                label: cornerActionLabel!,
-                glyph: cornerActionGlyph,
-                onTap: onCornerAction,
+                },
               ),
             ),
-        ],
+            if (cornerActionLabel != null)
+              Positioned(
+                top: 14,
+                right: 14,
+                child: _CornerPill(
+                  label: cornerActionLabel!,
+                  glyph: cornerActionGlyph,
+                  onTap: onCornerAction,
+                ),
+              ),
+          ],
         ),
       ),
     );
@@ -342,7 +330,6 @@ class _HeroAction extends StatelessWidget {
     final (bg, fg) = switch (variant) {
       PrismHeroVariant.violet => (Colors.white, PrismRelay.violetDeep),
       PrismHeroVariant.mint => (PrismRelay.greenInk, Colors.white),
-      PrismHeroVariant.plain => (PrismRelay.accent, Colors.white),
     };
     final reduce = MediaQuery.disableAnimationsOf(context);
     return AnimatedContainer(
@@ -351,7 +338,7 @@ class _HeroAction extends StatelessWidget {
       decoration: BoxDecoration(
         color: enabled ? bg : bg.withValues(alpha: .55),
         borderRadius: BorderRadius.circular(13),
-        boxShadow: enabled && variant != PrismHeroVariant.plain
+        boxShadow: enabled
             ? [
                 BoxShadow(
                   color: variant == PrismHeroVariant.violet
